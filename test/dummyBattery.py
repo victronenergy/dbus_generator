@@ -15,8 +15,10 @@ import platform
 from threading import Timer
 import argparse
 import logging
+import sys
 
-# our own packages
+# Victron imports
+sys.path.append('../ext/velib_python')
 from vedbus import VeDbusService
 
 dbusservice = None

@@ -52,15 +52,13 @@ class DbusGenerator:
 		# add some dummy data. This can go away when DbusMonitor is more generic.
 		dummy = {'code': None, 'whenToLog': 'configChange', 'accessLevel': None}
 
-		# TODO, add monitoring the relay function, and only operate the relay/export generator to dbus
-		# when the function is genset.
 		self._dbusmonitor = DbusMonitor({
 			'com.victronenergy.battery': {
 				'/Dc/0/I': dummy,
 				'/Soc': dummy},
 			'com.victronenergy.settings': {
 				'/Settings/Relay/Function': dummy}   # This is not our setting so do it here. not in supportedSettings
-		}, self._dbus_value_changed)
+		}, self._dbus_value_changed, self._device_added, self._device_removed)
 
 		self._evaluate_if_we_are_needed()
 
@@ -70,31 +68,46 @@ class DbusGenerator:
 		# Don't touch the relay when it is not ours!
 		if self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Function') == 1:
 
+			forcebatterymessage = False	  # todo, this can probably be coded cleaner..
 			if self._dbusservice is None:
-				logging.info("Action! Going on dbus and taking control of the relay")
-				self._dbusservice = VeDbusService('com.victronenergy.generator.startstop0')
-				self._dbusservice.add_mandatory_paths(
-					processname=__file__,
-					processversion='v%s, on Python %s' % (softwareversion, platform.python_version()),
-					connection='CCGX relay and Bat. instance %s' % self._settings['batteryinstance'],
-					deviceinstance=0,
-					productid=0,
-					productname='Genset start/stop',
-					firmwareversion=0,
-					hardwareversion=0,
-					connected=1)
+				logging.info("Action! Going on dbus and taking control of the relay.")
+				forcebatterymessage = True
+	#			self._dbusservice = VeDbusService('com.victronenergy.generator.startstop0')
+	#			self._dbusservice.add_mandatory_paths(
+	#				processname=__file__,
+	#				processversion='v%s, on Python %s' % (softwareversion, platform.python_version()),
+	#				connection='CCGX relay and Bat. instance %s' % self._settings['batteryinstance'],
+	#				deviceinstance=0,
+	#				productid=0,
+	#				productname='Genset start/stop',
+	#				firmwareversion=0,
+	#				hardwareversion=0,
+	#				connected=1)
 
 				# Create our own paths
-				# State: 0 = stopped, 1 = running, 2 = error: no battery to use
-				self._dbusservice.add_path('/State', 2)
+				# State: None = invalid, 0 = stopped, 1 = running
+	#			self._dbusservice.add_path('/State', None)
+				# Error: None = invalid, 0 = no error, 1 = no battery instance to use, genset stopped
+				# TODO, do we want an error for invalid soc?, genset stopped (? or do some other logic?)
+	#			self._dbusservice.add_path('/Error', None)
 
 			# Is our battery instance available?
 			batteries = self._dbusmonitor.get_service_list('com.victronenergy.battery')
 			if self._settings['batteryinstance'] in batteries:
+
+				if self._batteryservice is None or forcebatterymessage:
+					logging.info("Battery instance we need (%s) found! Using it for genset start/stop"
+						% self._settings['batteryinstance'])
+	#				self._dbusservice['/Error'] = 0
+
 				self._batteryservice = batteries[self._settings['batteryinstance']]
+
 			else:
-				if self._batteryservice is not None:
-					logging.info("Battery instance we used is of the dbus, genset will be stopped if running")
+				if self._batteryservice is not None or forcebatterymessage:
+					logging.info("Battery instance (%s) not on the dbus (anymore), in case the genset was \
+running, it will be stopped now" % self._settings['batteryinstance'])
+	#				self._dbusservice['/Error'] = 1
+					# Genset will be stopped by _evaluate_startstop_conditions(), since soc will be None
 
 				self._batteryservice = None
 
@@ -105,9 +118,11 @@ class DbusGenerator:
 			if self._dbusservice is not None:
 				# First stop the genset, so this is also signalled via the dbus
 				self.stop_genset()
-				self._dbusService.__del__()
+	#			self._dbusService.__del__()
 				self._dbusService = None
-				logging.info("Relay function is no longer genset start/stop, genset stopped and going off dbus")
+				self._batteryservice = None
+				logging.info("Relay function is no longer set to genset start/stop: made sure genset is off" +
+					"and now going off dbus")
 
 	def _device_added(self, dbusservicename, instance):
 		self._evaluate_if_we_are_needed()
@@ -116,6 +131,7 @@ class DbusGenerator:
 		self._evaluate_if_we_are_needed()
 
 	def _dbus_value_changed(self, dbusServiceName, dbusPath, options, changes, deviceInstance):
+		logging.debug("value changed! %s %s %s" % (dbusServiceName, dbusPath, changes))
 		if dbusServiceName == self._batteryservice and deviceInstance == self._settings['batteryinstance']:
 			self._evaluate_startstop_conditions()
 		elif dbusServiceName == 'com.victronenergy.settings':
@@ -124,16 +140,10 @@ class DbusGenerator:
 	def _handle_changed_setting(setting, oldvalue, newvalue):
 		self._evaluate_startstop_conditions()
 
-	def _our_battery_exists():
-		batteries = self._dbusmonitor.get_service_list('com.victronenergy.battery')
-		if self._settings['batteryinstance'] in batteries[0]:
-			return batteries[1]
-
-		return None
-
 	def _evaluate_startstop_conditions(self):
-		logging.debug("soc: %s" % (self.battery_soc()))
+		logging.info("soc: %s" % (self.battery_soc()))
 		if self.battery_soc() is None:
+			logging.warning("invalid soc! stopping genset!")
 			self.stop_genset()
 			return
 
@@ -153,11 +163,11 @@ class DbusGenerator:
 
 	def start_genset(self):
 		logging.info("TODO: implement starting the genset")
-		self._dbusservice['/State'] = 1
+	#	self._dbusservice['/State'] = 1
 
 	def stop_genset(self):
 		logging.info("TODO: implement stopping the genset")
-		self._dbusservice['/State'] = 0
+	#	self._dbusservice['/State'] = 0
 
 def main():
 	# Argument parsing
