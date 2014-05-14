@@ -21,8 +21,10 @@ import datetime
 import platform
 import dbus
 from os import path, pardir
+import sys
 
 # Victron imports
+sys.path.append('ext/velib_python')
 from dbusmonitor import DbusMonitor
 from vedbus import VeDbusService
 from settingsdevice import SettingsDevice
