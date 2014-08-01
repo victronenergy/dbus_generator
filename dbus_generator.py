@@ -93,7 +93,7 @@ class DbusGenerator:
 
 			# Is our battery instance available?
 			batteries = self._dbusmonitor.get_service_list('com.victronenergy.battery')
-			if self._settings['batteryinstance'] in batteries:
+			if self._settings['batteryinstance'] in batteries.values():
 
 				if self._batteryservice is None or forcebatterymessage:
 					logging.info("Battery instance we need (%s) found! Using it for genset start/stop"
