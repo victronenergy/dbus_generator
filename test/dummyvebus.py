@@ -13,11 +13,11 @@ from dbusdummyservice import DbusDummyService
 
 # Argument parsing
 parser = argparse.ArgumentParser(
-    description='dummy dbus service'
+    description='Multi'
 )
 
 parser.add_argument("-n", "--name", help="the D-Bus service you want me to claim",
-                type=str, default="com.victronenergy.battery.ttyO1")
+                type=str, default="com.victronenergy.vebus.tty23")
 
 args = parser.parse_args()
 
@@ -30,12 +30,20 @@ DBusGMainLoop(set_as_default=True)
 
 pvac_output = DbusDummyService(
     servicename=args.name,
-    productname='Battery',
-    deviceinstance=223,
+    deviceinstance=222,
+    productname='Multi',
     paths={
-        '/Dc/0/V': {'initial': 2, 'update': 0},
-        '/Dc/0/I': {'initial': -15, 'update': 0},
-        '/Soc': {'initial': 10, 'update': 0}})
+        '/Dc/V': {'initial': 24, 'update': 0},
+        '/Dc/I': {'initial': 3, 'update': 0},
+        '/Soc': {'initial': 80, 'update': 0},
+	'/State': {'initial': 1, 'update': 0},
+	'/Ac/Out/P': {'initial': 80, 'update': 1},
+	'/Ac/ActiveIn/L1/P': {'initial': 0, 'update': 1},
+	'/Ac/ActiveIn/L1/I': {'initial': 46, 'update':  0},
+	'/Ac/ActiveIn/L1/V': {'initial': 230, 'update': 0},
+	'/Ac/ActiveIn/L1/F': {'initial': 50, 'update': 0},
+	'/Ac/NumberOfPhases': {'initial': 1, 'update': 0}}
+	)
 
 print 'Connected to dbus, and switching over to gobject.MainLoop() (= event based)'
 mainloop = gobject.MainLoop()
