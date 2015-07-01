@@ -54,7 +54,8 @@ class TestGenerator(unittest.TestCase):
         self.set_condition_timed("BatteryVoltage", 0, 0, 0, 0, 0)
         self.set_condition_timed("AcLoad", 0, 0, 0, 0, 0)
         self.set_value(self._settingspath, '/Settings/Generator/Maintenance/Enabled', 0)
-        self.set_value(self._settingspath, '/Settings/Generator/SilentMode/Enabled', 0)
+        self.set_value(self._settingspath, '/Settings/Generator/TimeZones/Enabled', 0)
+        self.set_value(self._settingspath, '/Settings/Generator/MinimumRuntime', 0)
         self.set_value(self._generatorpath, '/ManualStart', 0)
         self.set_value(self._generatorpath, '/ManualStartTimer', 0)
         time.sleep(2)  # Make sure generator stops
@@ -101,6 +102,19 @@ class TestGenerator(unittest.TestCase):
         self.assertEqual(1, self.get_state(stoptimer - 1))
         self.assertEqual(0, self.get_state(3))
 
+    def test_minimum_runtime(self):
+        self.set_value(self._settingspath, '/Settings/Generator/MinimumRuntime', 1)
+        self.set_condition_timed("BatteryCurrent", 15, 10, 2, 2, 1)
+        self.set_value(self.batteryservice, '/Dc/0/I', -15)
+        # Generator started
+        self.assertEqual(1, self.get_state(5))
+        # Set value to stop the generator
+        self.set_value(self.batteryservice, '/Dc/0/I', -10)
+        # Generator still running due to minimum runtime
+        self.assertEqual(1, self.get_state(50))
+        # Minimum runtime met and generator stops
+        self.assertEqual(0, self.get_state(10))
+
     def test_manualstart(self):
         self.set_value(self._generatorpath, '/ManualStart', 1)
         self.assertEqual(1, self.get_state(2))
@@ -142,11 +156,11 @@ class TestGenerator(unittest.TestCase):
         self.assertEqual(1, self.wait_and_get('/SkipMaintenance', 2))
         self.assertEqual(0, self.get_state(0))
 
-    def test_silent_mode(self):
+    def test_timezones_mode(self):
 
         currenttime = time.time() - time.mktime(datetime.date.today().timetuple())
-        self.set_value(self._settingspath, '/Settings/Generator/SilentMode/StartTime', currenttime)
-        self.set_value(self._settingspath, '/Settings/Generator/SilentMode/EndTime', currenttime + 20)
+        self.set_value(self._settingspath, '/Settings/Generator/TimeZones/StartTime', currenttime)
+        self.set_value(self._settingspath, '/Settings/Generator/TimeZones/EndTime', currenttime + 20)
 
         self.set_value(self.batteryservice, '/Dc/0/I', -15)
         self.set_condition_timed("BatteryCurrent", 15, 10, 2, 2, 1)
@@ -154,16 +168,16 @@ class TestGenerator(unittest.TestCase):
 
         # Battery current condition must make generator start
         self.assertEqual(1, self.wait_and_get('/State', 5))
-        self.set_value(self._settingspath, '/Settings/Generator/SilentMode/Enabled', 1)
+        self.set_value(self._settingspath, '/Settings/Generator/TimeZones/Enabled', 1)
 
-        # Entering to silent mode, generator must stop after stroptimer
+        # Entering to secondary time zone, generator must stop after stroptimer
         self.assertEqual(0, self.wait_and_get('/State', 5))
 
-        # Emergency start value must make the generator start
+        # Timezone start value must make the generator start
         self.set_value(self.batteryservice, '/Dc/0/I', -25)
         self.assertEqual(1, self.wait_and_get('/State', 5))
 
-        # Wait till silent mode ends, generator must continue running because current still above stop value
+        # Wait till time zones ends, generator must continue running because current still above stop value
         self.assertEqual(1, self.wait_and_get('/State', 5))
 
         # Set current to stop value, generator must stop
@@ -276,16 +290,16 @@ class TestGenerator(unittest.TestCase):
         settings = ({"StartValue": start, "StopValue": stop, "StartTimer": startimer,
                      "StopTimer": stoptimer, "Enabled": enabled})
         if emergency:
-            settings["EmergencyStartValue"] = settings.pop("StartValue")
-            settings["EmergencyStopValue"] = settings.pop("StopValue")
+            settings["TimezoneStartValue"] = settings.pop("StartValue")
+            settings["TimezoneStopValue"] = settings.pop("StopValue")
         for s, v in settings.iteritems():
             self.set_value(self._settingspath, "/Settings/Generator/" + condition + "/" + s, v)
 
     def set_condition(self, condition, start, stop, enabled, emergency=False):
         settings = ({"StartValue": start, "StopValue": stop, "Enabled": enabled})
         if emergency:
-            settings["EmergencyStartValue"] = settings.pop("StartValue")
-            settings["EmergencyStopValue"] = settings.pop("StopValue")
+            settings["TimezoneStartValue"] = settings.pop("StartValue")
+            settings["TimezoneStopValue"] = settings.pop("StopValue")
         for s, v in settings.iteritems():
             self.set_value(self._settingspath, "/Settings/Generator/" + condition + "/" + s, v)
 
