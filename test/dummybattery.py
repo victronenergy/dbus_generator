@@ -17,7 +17,7 @@ parser = argparse.ArgumentParser(
 )
 
 parser.add_argument("-n", "--name", help="the D-Bus service you want me to claim",
-                type=str, default="com.victronenergy.battery.ttyO1")
+                type=str, default="com.victronenergy.battery.tty22")
 
 args = parser.parse_args()
 
