@@ -129,6 +129,7 @@ class DbusGenerator:
                 'accumulatedtotal': ['/Settings/Generator/AccumulatedTotal', 0, 0, 0],
                 'batteryservice': ['/Settings/Generator/BatteryService', self.SERVICE_NOBATTERY, 0, 0],
                 'vebusservice': ['/Settings/Generator/VebusService', self.SERVICE_NOVEBUS, 0, 0],
+                'minimumruntime': ['/Settings/Generator/MinimumRuntime', 0, 0, 86400],  # minutes
                 # Silent mode
                 'timezonesenabled': ['/Settings/Generator/TimeZones/Enabled', 0, 0, 1],
                 'timezonesstarttimer': ['/Settings/Generator/TimeZones/StartTime', 75600, 0, 86400],
@@ -343,7 +344,8 @@ class DbusGenerator:
 
         if start:
             self._start_generator(runningbycondition)
-        else:
+        elif (self._dbusservice['/Runtime'] >= self._settings['minimumruntime'] * 60
+              or self._dbusservice['/RunningByCondition'] == 'manual'):
             self._stop_generator()
 
     def _reset_condition(self, condition):
