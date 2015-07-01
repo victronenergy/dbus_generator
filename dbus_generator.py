@@ -7,8 +7,7 @@
 # Battery and vebus monitors can be configured through the gui.
 # It then monitors SOC, AC loads, battery current and battery voltage,to auto start/stop the generator based
 # on the configuration settings. Generator can be started manually or periodically setting a maintenance period.
-# A silent mode takes care that during a user-defined time threshold the generator only will start if there is
-# an emergency condition.
+# Time zones function allows to use different values for the conditions along the day depending on time
 
 from dbus.mainloop.glib import DBusGMainLoop
 import gobject
@@ -131,39 +130,39 @@ class DbusGenerator:
                 'batteryservice': ['/Settings/Generator/BatteryService', self.SERVICE_NOBATTERY, 0, 0],
                 'vebusservice': ['/Settings/Generator/VebusService', self.SERVICE_NOVEBUS, 0, 0],
                 # Silent mode
-                'silentmodeenabled': ['/Settings/Generator/SilentMode/Enabled', 0, 0, 1],
-                'silentmodestarttimer': ['/Settings/Generator/SilentMode/StartTime', 0, 0, 86400],
-                'silentmodeendtime': ['/Settings/Generator/SilentMode/EndTime', 0, 0, 86400],
+                'timezonesenabled': ['/Settings/Generator/TimeZones/Enabled', 0, 0, 1],
+                'timezonesstarttimer': ['/Settings/Generator/TimeZones/StartTime', 75600, 0, 86400],
+                'timezonesendtime': ['/Settings/Generator/TimeZones/EndTime', 21600, 0, 86400],
                 # SOC
                 'socenabled': ['/Settings/Generator/Soc/Enabled', 0, 0, 1],
                 'socstart': ['/Settings/Generator/Soc/StartValue', 90, 0, 100],
                 'socstop': ['/Settings/Generator/Soc/StopValue', 90, 0, 100],
-                'em_socstart': ['/Settings/Generator/Soc/EmergencyStartValue', 90, 0, 100],
-                'em_socstop': ['/Settings/Generator/Soc/EmergencyStopValue', 90, 0, 100],
+                'tz_socstart': ['/Settings/Generator/Soc/TimezoneStartValue', 90, 0, 100],
+                'tz_socstop': ['/Settings/Generator/Soc/TimezoneStopValue', 90, 0, 100],
                 # Voltage
                 'batteryvoltageenabled': ['/Settings/Generator/BatteryVoltage/Enabled', 0, 0, 1],
                 'batteryvoltagestart': ['/Settings/Generator/BatteryVoltage/StartValue', 11.5, 0, 150],
                 'batteryvoltagestop': ['/Settings/Generator/BatteryVoltage/StopValue', 12.4, 0, 150],
                 'batteryvoltagestarttimer': ['/Settings/Generator/BatteryVoltage/StartTimer', 20, 0, 10000],
                 'batteryvoltagestoptimer': ['/Settings/Generator/BatteryVoltage/StopTimer', 20, 0, 10000],
-                'em_batteryvoltagestart': ['/Settings/Generator/BatteryVoltage/EmergencyStartValue', 11.9, 0, 100],
-                'em_batteryvoltagestop': ['/Settings/Generator/BatteryVoltage/EmergencyStopValue', 12.4, 0, 100],
+                'tz_batteryvoltagestart': ['/Settings/Generator/BatteryVoltage/TimezoneStartValue', 11.9, 0, 100],
+                'tz_batteryvoltagestop': ['/Settings/Generator/BatteryVoltage/TimezoneStopValue', 12.4, 0, 100],
                 # Current
                 'batterycurrentenabled': ['/Settings/Generator/BatteryCurrent/Enabled', 0, 0, 1],
                 'batterycurrentstart': ['/Settings/Generator/BatteryCurrent/StartValue', 10.5, 0.5, 1000],
                 'batterycurrentstop': ['/Settings/Generator/BatteryCurrent/StopValue', 5.5, 0, 1000],
                 'batterycurrentstarttimer': ['/Settings/Generator/BatteryCurrent/StartTimer', 20, 0, 10000],
                 'batterycurrentstoptimer': ['/Settings/Generator/BatteryCurrent/StopTimer', 20, 0, 10000],
-                'em_batterycurrentstart': ['/Settings/Generator/BatteryCurrent/EmergencyStartValue', 20.5, 0, 1000],
-                'em_batterycurrentstop': ['/Settings/Generator/BatteryCurrent/EmergencyStopValue', 15.5, 0, 1000],
+                'tz_batterycurrentstart': ['/Settings/Generator/BatteryCurrent/TimezoneStartValue', 20.5, 0, 1000],
+                'tz_batterycurrentstop': ['/Settings/Generator/BatteryCurrent/TimezoneStopValue', 15.5, 0, 1000],
                 # AC load
                 'acloadenabled': ['/Settings/Generator/AcLoad/Enabled', 0, 0, 1],
                 'acloadstart': ['/Settings/Generator/AcLoad/StartValue', 1600, 5, 100000],
                 'acloadstop': ['/Settings/Generator/AcLoad/StopValue', 800, 0, 100000],
                 'acloadstarttimer': ['/Settings/Generator/AcLoad/StartTimer', 20, 0, 10000],
                 'acloadstoptimer': ['/Settings/Generator/AcLoad/StopTimer', 20, 0, 10000],
-                'em_acloadstart': ['/Settings/Generator/AcLoad/EmergencyStartValue', 1900, 0, 100000],
-                'em_acloadstop': ['/Settings/Generator/AcLoad/EmergencyStopValue', 1200, 0, 100000],
+                'tz_acloadstart': ['/Settings/Generator/AcLoad/TimezoneStartValue', 1900, 0, 100000],
+                'tz_acloadstop': ['/Settings/Generator/AcLoad/TimezoneStopValue', 1200, 0, 100000],
                 # Maintenance
                 'maintenanceenabled': ['/Settings/Generator/Maintenance/Enabled', 0, 0, 1],
                 'maintenancestartdate': ['/Settings/Generator/Maintenance/StartDate', time.time(), 0, 10000000000.1],
@@ -215,7 +214,7 @@ class DbusGenerator:
                 # Manual start timer
                 self._dbusservice.add_path('/ManualStartTimer', value=0, writeable=True)
                 # Silent mode active
-                self._dbusservice.add_path('/SilentMode', value=0)
+                self._dbusservice.add_path('/SecondaryTimeZone', value=0)
                 # Battery services
                 self._dbusservice.add_path('/AvailableBatteryServices', value=None)
                 # Vebus services
@@ -314,7 +313,7 @@ class DbusGenerator:
         self.timer_runnning = False
         values = self._get_updated_values()
 
-        self._check_silent_mode()
+        self._check_secondary_timezone()
 
         # New day, register it
         if self._last_counters_check < today and self._dbusservice['/State'] == 0:
@@ -381,7 +380,7 @@ class DbusGenerator:
 
     def _evaluate_condition(self, condition, value):
         name = condition['name']
-        setting = ('em_' if self._dbusservice['/SilentMode'] == 1 else '') + name
+        setting = ('tz_' if self._dbusservice['/SecondaryTimeZone'] == 1 else '') + name
         startvalue = self._settings[setting + 'start']
         stopvalue = self._settings[setting + 'stop']
 
@@ -479,27 +478,27 @@ class DbusGenerator:
                                                      self._settings['maintenancestarttimer'])
         return start and needed
 
-    def _check_silent_mode(self):
+    def _check_secondary_timezone(self):
         active = False
-        if self._settings['silentmodeenabled'] == 1:
+        if self._settings['timezonesenabled'] == 1:
             # Seconds after today 00:00
             timeinseconds = time.time() - time.mktime(datetime.date.today().timetuple())
-            silentmodestart = self._settings['silentmodestarttimer']
-            silentmodeend = self._settings['silentmodeendtime']
+            timezonesstart = self._settings['timezonesstarttimer']
+            timezonesend = self._settings['timezonesendtime']
 
             # Check if the current time is between the start time and end time
-            if silentmodestart < silentmodeend:
-                active = silentmodestart <= timeinseconds and timeinseconds < silentmodeend
+            if timezonesstart < timezonesend:
+                active = timezonesstart <= timeinseconds and timeinseconds < timezonesend
             else:  # End time is lower than start time, example Start: 21:00, end: 08:00
-                active = not (silentmodeend < timeinseconds and timeinseconds < silentmodestart)
+                active = not (timezonesend < timeinseconds and timeinseconds < timezonesstart)
 
-        if self._dbusservice['/SilentMode'] == 0 and active:
-            logger.info('Entering silent mode, only emergency values will be evaluated')
+        if self._dbusservice['/SecondaryTimeZone'] == 0 and active:
+            logger.info('Entering to secondary timezone timezone')
 
-        elif self._dbusservice['/SilentMode'] == 1 and not active:
-            logger.info('Leaving silent mode')
+        elif self._dbusservice['/SecondaryTimeZone'] == 1 and not active:
+            logger.info('Leaving secondary timezone')
 
-        self._dbusservice['/SilentMode'] = int(active)
+        self._dbusservice['/SecondaryTimeZone'] = int(active)
 
         return active
 
