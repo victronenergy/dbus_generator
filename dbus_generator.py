@@ -98,17 +98,17 @@ class DbusGenerator:
                 '/Mgmt/Connection': dummy,
                 '/State': dummy,
                 '/Ac/Out/P': dummy,
-                '/Dc/I': dummy,
-                '/Dc/V': dummy,
+                '/Dc/0/Current': dummy,
+                '/Dc/0/Voltage': dummy,
                 '/Soc': dummy
             },
             'com.victronenergy.battery': {
                 '/Connected': dummy,
                 '/ProductName': dummy,
                 '/Mgmt/Connection': dummy,
-                '/Dc/0/V': dummy,
-                '/Dc/0/I': dummy,
-                '/Dc/0/P': dummy,
+                '/Dc/0/Voltage': dummy,
+                '/Dc/0/Current': dummy,
+                '/Dc/0/Power': dummy,
                 '/Soc': dummy
             },
             'com.victronenergy.settings': {   # This is not our setting so do it here. not in supportedSettings
@@ -559,12 +559,8 @@ class DbusGenerator:
         if self._batteryservice is not None:
             batteryservicetype = self._batteryservice.split('.')[2]
             values['soc'] = self._dbusmonitor.get_value(self._batteryservice, '/Soc')
-            if batteryservicetype == 'battery':
-                values['batteryvoltage'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/0/V')
-                values['batterycurrent'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/0/I') * -1
-            elif batteryservicetype == 'vebus':
-                values['batteryvoltage'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/V')
-                values['batterycurrent'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/I') * -1
+            values['batteryvoltage'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/0/Voltage')
+            values['batterycurrent'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/0/Current') * -1
 
         if self._vebusservice is not None:
             values['acload'] = self._dbusmonitor.get_value(self._vebusservice, '/Ac/Out/P')

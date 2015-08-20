@@ -78,38 +78,38 @@ class TestGenerator(unittest.TestCase):
         starttimer = random.randint(5, 10)
         stoptimer = random.randint(5, 10)
 
-        self.set_value(self.batteryservice, '/Dc/0/I', startvalue + 1)
+        self.set_value(self.batteryservice, '/Dc/0/Current', startvalue + 1)
 
         # Start
         self.set_condition_timed("BatteryCurrent", -startvalue, -stopvalue, starttimer, stoptimer, 1)
-        self.set_value(self.batteryservice, '/Dc/0/I', startvalue)
+        self.set_value(self.batteryservice, '/Dc/0/Current', startvalue)
         self.assertEqual(0, self.get_state(3))
         # Reset the timer
-        self.set_value(self.batteryservice, '/Dc/0/I', startvalue + 1)
+        self.set_value(self.batteryservice, '/Dc/0/Current', startvalue + 1)
         time.sleep(2)
-        self.set_value(self.batteryservice, '/Dc/0/I', startvalue)
+        self.set_value(self.batteryservice, '/Dc/0/Current', startvalue)
         # If timer was correctly resetted, generator should still stopped
         self.assertEqual(0, self.get_state(starttimer - 2))
         # Finally generator should start
         self.assertEqual(1, self.get_state(5))
 
         # Stop
-        self.set_value(self.batteryservice, '/Dc/0/I', stopvalue)
+        self.set_value(self.batteryservice, '/Dc/0/Current', stopvalue)
         time.sleep(stoptimer - 2)
-        self.set_value(self.batteryservice, '/Dc/0/I', stopvalue - 1)
+        self.set_value(self.batteryservice, '/Dc/0/Current', stopvalue - 1)
         time.sleep(1)
-        self.set_value(self.batteryservice, '/Dc/0/I', stopvalue)
+        self.set_value(self.batteryservice, '/Dc/0/Current', stopvalue)
         self.assertEqual(1, self.get_state(stoptimer - 1))
         self.assertEqual(0, self.get_state(3))
 
     def test_minimum_runtime(self):
         self.set_value(self._settingspath, '/Settings/Generator/MinimumRuntime', 1)
         self.set_condition_timed("BatteryCurrent", 15, 10, 2, 2, 1)
-        self.set_value(self.batteryservice, '/Dc/0/I', -15)
+        self.set_value(self.batteryservice, '/Dc/0/Current', -15)
         # Generator started
         self.assertEqual(1, self.get_state(5))
         # Set value to stop the generator
-        self.set_value(self.batteryservice, '/Dc/0/I', -10)
+        self.set_value(self.batteryservice, '/Dc/0/Current', -10)
         # Generator still running due to minimum runtime
         self.assertEqual(1, self.get_state(50))
         # Minimum runtime met and generator stops
@@ -162,7 +162,7 @@ class TestGenerator(unittest.TestCase):
         self.set_value(self._settingspath, '/Settings/Generator/TimeZones/StartTime', currenttime)
         self.set_value(self._settingspath, '/Settings/Generator/TimeZones/EndTime', currenttime + 20)
 
-        self.set_value(self.batteryservice, '/Dc/0/I', -15)
+        self.set_value(self.batteryservice, '/Dc/0/Current', -15)
         self.set_condition_timed("BatteryCurrent", 15, 10, 2, 2, 1)
         self.set_condition_timed("BatteryCurrent", 25, 15, 2, 2, 1, True)
 
@@ -174,14 +174,14 @@ class TestGenerator(unittest.TestCase):
         self.assertEqual(0, self.wait_and_get('/State', 5))
 
         # Timezone start value must make the generator start
-        self.set_value(self.batteryservice, '/Dc/0/I', -25)
+        self.set_value(self.batteryservice, '/Dc/0/Current', -25)
         self.assertEqual(1, self.wait_and_get('/State', 5))
 
         # Wait till time zones ends, generator must continue running because current still above stop value
         self.assertEqual(1, self.wait_and_get('/State', 5))
 
         # Set current to stop value, generator must stop
-        self.set_value(self.batteryservice, '/Dc/0/I', -10)
+        self.set_value(self.batteryservice, '/Dc/0/Current', -10)
         self.assertEqual(0, self.wait_and_get('/State', 5))
 
     def test_condition_cascade(self, emergency=False):
@@ -193,8 +193,8 @@ class TestGenerator(unittest.TestCase):
         currenttime = time.time() - time.mktime(datetime.date.today().timetuple())
 
         self.set_value(self.vebusservice, '/Ac/Out/P', 24)
-        self.set_value(self.batteryservice, '/Dc/0/I', -25)
-        self.set_value(self.batteryservice, '/Dc/0/V', 23)
+        self.set_value(self.batteryservice, '/Dc/0/Current', -25)
+        self.set_value(self.batteryservice, '/Dc/0/Voltage', 23)
 
         self.set_condition("Soc", 80, 85, 1, emergency)
         self.set_condition_timed("AcLoad", 24, 23, starttimer, stoptimer, 1, emergency)
@@ -219,10 +219,10 @@ class TestGenerator(unittest.TestCase):
         self.set_value(self.vebusservice, '/Ac/Out/P', 1)
 
         self.assertEqual('batterycurrent', self.wait_and_get('/RunningByCondition', stoptimer + 2))
-        self.set_value(self.batteryservice, '/Dc/0/I', -10)
+        self.set_value(self.batteryservice, '/Dc/0/Current', -10)
 
         self.assertEqual('batteryvoltage', self.wait_and_get('/RunningByCondition', stoptimer + 2))
-        self.set_value(self.batteryservice, '/Dc/0/V', 24)
+        self.set_value(self.batteryservice, '/Dc/0/Voltage', 24)
 
         self.assertEqual('maintenance', self.wait_and_get('/RunningByCondition', stoptimer + 2))
         self.assertGreaterEqual(self.get_value(self._generatorpath, '/Runtime'), 11)
@@ -232,13 +232,13 @@ class TestGenerator(unittest.TestCase):
         self.assertEqual(0,  self.get_state(2))
 
     def test_remove_battery_service(self):
-        self.set_value(self.batteryservice, '/Dc/0/I', -15)
+        self.set_value(self.batteryservice, '/Dc/0/Current', -15)
         self.set_condition_timed("BatteryCurrent", 14, 10, 0, 5, 1)
         self.assertEqual(1, self.get_state(2))
         self.stop_services()
         self.assertEqual(0, self.get_state(2))
         self.start_services()
-        self.set_value(self.batteryservice, '/Dc/0/I', -15)
+        self.set_value(self.batteryservice, '/Dc/0/Current', -15)
         self.assertEqual(1, self.get_state(2))
 
     def test_remove_vebus_service(self):

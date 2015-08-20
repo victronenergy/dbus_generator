@@ -33,8 +33,8 @@ pvac_output = DbusDummyService(
     productname='Battery',
     deviceinstance=223,
     paths={
-        '/Dc/0/V': {'initial': 2, 'update': 0},
-        '/Dc/0/I': {'initial': -15, 'update': 0},
+        '/Dc/0/Voltage': {'initial': 2, 'update': 0},
+        '/Dc/0/Current': {'initial': -15, 'update': 0},
         '/Soc': {'initial': 10, 'update': 0}})
 
 print 'Connected to dbus, and switching over to gobject.MainLoop() (= event based)'

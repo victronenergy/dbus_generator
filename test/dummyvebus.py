@@ -33,8 +33,8 @@ pvac_output = DbusDummyService(
     deviceinstance=222,
     productname='Multi',
     paths={
-        '/Dc/V': {'initial': 24, 'update': 0},
-        '/Dc/I': {'initial': 3, 'update': 0},
+        '/Dc/0/Voltage': {'initial': 24, 'update': 0},
+        '/Dc/0/Current': {'initial': 3, 'update': 0},
         '/Soc': {'initial': 80, 'update': 0},
 	'/State': {'initial': 1, 'update': 0},
 	'/Ac/Out/P': {'initial': 80, 'update': 1},
