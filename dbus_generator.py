@@ -39,12 +39,13 @@ class DbusGenerator:
     def __init__(self):
         self.RELAY_GPIO_FILE = '/sys/class/gpio/gpio182/value'
         self.SERVICE_NOBATTERY = 'nobattery'
-        self.SERVICE_NOVEBUS = 'novebus'
+        self.SERVICE_NOVEBUS = 'noac'
+        self.SERVICE_SYSTEMCALC = 'com.victronenergy.system'
         self.HISTORY_DAYS = 30
         self._last_counters_check = 0
         self._dbusservice = None
         self._batteryservice = None
-        self._vebusservice = None
+        self._acloadsource = None
         self._starttime = 0
         self._manualstarttimer = 0
         self._last_runtime_update = 0
@@ -114,7 +115,16 @@ class DbusGenerator:
             'com.victronenergy.settings': {   # This is not our setting so do it here. not in supportedSettings
                 '/Settings/Relay/Function': dummy,
                 '/Settings/Relay/Polarity': dummy,
-                '/Settings/System/TimeZone': dummy}
+                '/Settings/System/TimeZone': dummy,
+                '/Settings/SystemSetup/BatteryService': dummy
+                },
+            'com.victronenergy.system': {   # This is not our setting so do it here. not in supportedSettings
+                '/AvailableBatteryServices': dummy,
+                '/Dc/Battery/Soc': dummy,
+                '/Dc/Battery/Voltage': dummy,
+                '/Dc/Battery/Current': dummy,
+                '/Ac/Consumption/Power': dummy,
+                }
         }, self._dbus_value_changed, self._device_added, self._device_removed)
 
         # Set timezone to user selected timezone
@@ -124,53 +134,53 @@ class DbusGenerator:
         self._settings = SettingsDevice(
             bus=dbus.SystemBus() if (platform.machine() == 'armv7l') else dbus.SessionBus(),
             supportedSettings={
-                'autostart': ['/Settings/Generator/AutoStart', 0, 0, 1],
-                'accumulateddaily': ['/Settings/Generator/AccumulatedDaily', '', 0, 0],
-                'accumulatedtotal': ['/Settings/Generator/AccumulatedTotal', 0, 0, 0],
-                'batteryservice': ['/Settings/Generator/BatteryService', self.SERVICE_NOBATTERY, 0, 0],
-                'vebusservice': ['/Settings/Generator/VebusService', self.SERVICE_NOVEBUS, 0, 0],
-                'minimumruntime': ['/Settings/Generator/MinimumRuntime', 0, 0, 86400],  # minutes
-                # Silent mode
-                'timezonesenabled': ['/Settings/Generator/TimeZones/Enabled', 0, 0, 1],
-                'timezonesstarttimer': ['/Settings/Generator/TimeZones/StartTime', 75600, 0, 86400],
-                'timezonesendtime': ['/Settings/Generator/TimeZones/EndTime', 21600, 0, 86400],
+                'autostart': ['/Settings/Generator/0/AutoStart', 0, 0, 1],
+                'accumulateddaily': ['/Settings/Generator/0/AccumulatedDaily', '', 0, 0],
+                'accumulatedtotal': ['/Settings/Generator/0/AccumulatedTotal', 0, 0, 0],
+                'batteryservice': ['/Settings/Generator/0/BatteryService', self.SERVICE_NOBATTERY, 0, 0],
+                'acloadsource': ['/Settings/Generator/0/AcLoadSourceService', self.SERVICE_NOVEBUS, 0, 0],
+                'minimumruntime': ['/Settings/Generator/0/MinimumRuntime', 0, 0, 86400],  # minutes
+                # Time zones
+                'timezonesenabled': ['/Settings/Generator/0/TimeZones/Enabled', 0, 0, 1],
+                'timezonesstarttimer': ['/Settings/Generator/0/TimeZones/StartTime', 75600, 0, 86400],
+                'timezonesendtime': ['/Settings/Generator/0/TimeZones/EndTime', 21600, 0, 86400],
                 # SOC
-                'socenabled': ['/Settings/Generator/Soc/Enabled', 0, 0, 1],
-                'socstart': ['/Settings/Generator/Soc/StartValue', 90, 0, 100],
-                'socstop': ['/Settings/Generator/Soc/StopValue', 90, 0, 100],
-                'tz_socstart': ['/Settings/Generator/Soc/TimezoneStartValue', 90, 0, 100],
-                'tz_socstop': ['/Settings/Generator/Soc/TimezoneStopValue', 90, 0, 100],
+                'socenabled': ['/Settings/Generator/0/Soc/Enabled', 0, 0, 1],
+                'socstart': ['/Settings/Generator/0/Soc/StartValue', 90, 0, 100],
+                'socstop': ['/Settings/Generator/0/Soc/StopValue', 90, 0, 100],
+                'tz_socstart': ['/Settings/Generator/0/Soc/TimezoneStartValue', 90, 0, 100],
+                'tz_socstop': ['/Settings/Generator/0/Soc/TimezoneStopValue', 90, 0, 100],
                 # Voltage
-                'batteryvoltageenabled': ['/Settings/Generator/BatteryVoltage/Enabled', 0, 0, 1],
-                'batteryvoltagestart': ['/Settings/Generator/BatteryVoltage/StartValue', 11.5, 0, 150],
-                'batteryvoltagestop': ['/Settings/Generator/BatteryVoltage/StopValue', 12.4, 0, 150],
-                'batteryvoltagestarttimer': ['/Settings/Generator/BatteryVoltage/StartTimer', 20, 0, 10000],
-                'batteryvoltagestoptimer': ['/Settings/Generator/BatteryVoltage/StopTimer', 20, 0, 10000],
-                'tz_batteryvoltagestart': ['/Settings/Generator/BatteryVoltage/TimezoneStartValue', 11.9, 0, 100],
-                'tz_batteryvoltagestop': ['/Settings/Generator/BatteryVoltage/TimezoneStopValue', 12.4, 0, 100],
+                'batteryvoltageenabled': ['/Settings/Generator/0/BatteryVoltage/Enabled', 0, 0, 1],
+                'batteryvoltagestart': ['/Settings/Generator/0/BatteryVoltage/StartValue', 11.5, 0, 150],
+                'batteryvoltagestop': ['/Settings/Generator/0/BatteryVoltage/StopValue', 12.4, 0, 150],
+                'batteryvoltagestarttimer': ['/Settings/Generator/0/BatteryVoltage/StartTimer', 20, 0, 10000],
+                'batteryvoltagestoptimer': ['/Settings/Generator/0/BatteryVoltage/StopTimer', 20, 0, 10000],
+                'tz_batteryvoltagestart': ['/Settings/Generator/0/BatteryVoltage/TimezoneStartValue', 11.9, 0, 100],
+                'tz_batteryvoltagestop': ['/Settings/Generator/0/BatteryVoltage/TimezoneStopValue', 12.4, 0, 100],
                 # Current
-                'batterycurrentenabled': ['/Settings/Generator/BatteryCurrent/Enabled', 0, 0, 1],
-                'batterycurrentstart': ['/Settings/Generator/BatteryCurrent/StartValue', 10.5, 0.5, 1000],
-                'batterycurrentstop': ['/Settings/Generator/BatteryCurrent/StopValue', 5.5, 0, 1000],
-                'batterycurrentstarttimer': ['/Settings/Generator/BatteryCurrent/StartTimer', 20, 0, 10000],
-                'batterycurrentstoptimer': ['/Settings/Generator/BatteryCurrent/StopTimer', 20, 0, 10000],
-                'tz_batterycurrentstart': ['/Settings/Generator/BatteryCurrent/TimezoneStartValue', 20.5, 0, 1000],
-                'tz_batterycurrentstop': ['/Settings/Generator/BatteryCurrent/TimezoneStopValue', 15.5, 0, 1000],
+                'batterycurrentenabled': ['/Settings/Generator/0/BatteryCurrent/Enabled', 0, 0, 1],
+                'batterycurrentstart': ['/Settings/Generator/0/BatteryCurrent/StartValue', 10.5, 0.5, 1000],
+                'batterycurrentstop': ['/Settings/Generator/0/BatteryCurrent/StopValue', 5.5, 0, 1000],
+                'batterycurrentstarttimer': ['/Settings/Generator/0/BatteryCurrent/StartTimer', 20, 0, 10000],
+                'batterycurrentstoptimer': ['/Settings/Generator/0/BatteryCurrent/StopTimer', 20, 0, 10000],
+                'tz_batterycurrentstart': ['/Settings/Generator/0/BatteryCurrent/TimezoneStartValue', 20.5, 0, 1000],
+                'tz_batterycurrentstop': ['/Settings/Generator/0/BatteryCurrent/TimezoneStopValue', 15.5, 0, 1000],
                 # AC load
-                'acloadenabled': ['/Settings/Generator/AcLoad/Enabled', 0, 0, 1],
-                'acloadstart': ['/Settings/Generator/AcLoad/StartValue', 1600, 5, 100000],
-                'acloadstop': ['/Settings/Generator/AcLoad/StopValue', 800, 0, 100000],
-                'acloadstarttimer': ['/Settings/Generator/AcLoad/StartTimer', 20, 0, 10000],
-                'acloadstoptimer': ['/Settings/Generator/AcLoad/StopTimer', 20, 0, 10000],
-                'tz_acloadstart': ['/Settings/Generator/AcLoad/TimezoneStartValue', 1900, 0, 100000],
-                'tz_acloadstop': ['/Settings/Generator/AcLoad/TimezoneStopValue', 1200, 0, 100000],
+                'acloadenabled': ['/Settings/Generator/0/AcLoad/Enabled', 0, 0, 1],
+                'acloadstart': ['/Settings/Generator/0/AcLoad/StartValue', 1600, 5, 100000],
+                'acloadstop': ['/Settings/Generator/0/AcLoad/StopValue', 800, 0, 100000],
+                'acloadstarttimer': ['/Settings/Generator/0/AcLoad/StartTimer', 20, 0, 10000],
+                'acloadstoptimer': ['/Settings/Generator/0/AcLoad/StopTimer', 20, 0, 10000],
+                'tz_acloadstart': ['/Settings/Generator/0/AcLoad/TimezoneStartValue', 1900, 0, 100000],
+                'tz_acloadstop': ['/Settings/Generator/0/AcLoad/TimezoneStopValue', 1200, 0, 100000],
                 # Maintenance
-                'maintenanceenabled': ['/Settings/Generator/Maintenance/Enabled', 0, 0, 1],
-                'maintenancestartdate': ['/Settings/Generator/Maintenance/StartDate', time.time(), 0, 10000000000.1],
-                'maintenancestarttimer': ['/Settings/Generator/Maintenance/StartTime', 54000, 0, 86400],
-                'maintenanceinterval': ['/Settings/Generator/Maintenance/Interval', 28, 1, 365],
-                'maintenanceruntime': ['/Settings/Generator/Maintenance/Duration', 7200, 1, 86400],
-                'maintenanceskipruntime': ['/Settings/Generator/Maintenance/SkipRuntime', 0, 0, 100000]
+                'maintenanceenabled': ['/Settings/Generator/0/Maintenance/Enabled', 0, 0, 1],
+                'maintenancestartdate': ['/Settings/Generator/0/Maintenance/StartDate', time.time(), 0, 10000000000.1],
+                'maintenancestarttimer': ['/Settings/Generator/0/Maintenance/StartTime', 54000, 0, 86400],
+                'maintenanceinterval': ['/Settings/Generator/0/Maintenance/Interval', 28, 1, 365],
+                'maintenanceruntime': ['/Settings/Generator/0/Maintenance/Duration', 7200, 1, 86400],
+                'maintenanceskipruntime': ['/Settings/Generator/0/Maintenance/SkipRuntime', 0, 0, 100000]
             },
             eventCallback=self._handle_changed_setting)
 
@@ -220,14 +230,14 @@ class DbusGenerator:
                 self._dbusservice.add_path('/AvailableBatteryServices', value=None)
                 # Vebus services
                 self._dbusservice.add_path('/AvailableVebusServices', value=None)
-                # As the user can select the vebus service and is not yet possible to get the servie name from the gui
+                # As the user can select the vebus/acloadsource service and is not yet possible to get the servie name from the gui
                 # we need to provide it
-                self._dbusservice.add_path('/VebusServiceName', value=None)
+                self._dbusservice.add_path('/AcLoadSourceService', value=None)
 
                 self._determineservices()
 
                 self._batteryservice = None
-                self._vebusservice = None
+                self._acloadsource = None
                 self._populate_services_list()
                 self._determineservices()
 
@@ -235,9 +245,9 @@ class DbusGenerator:
                     logger.info('Battery service we need (%s) found! Using it for generator start/stop'
                                 % self._get_service_path(self._settings['batteryservice']))
 
-                elif self._vebusservice is not None:
+                elif self._acloadsource is not None:
                     logger.info('VE.Bus service we need (%s) found! Using it for generator start/stop'
-                                % self._get_service_path(self._settings['vebusservice']))
+                                % self._get_service_path(self._settings['acloadsource']))
             else:
                 self._populate_services_list()
                 self._determineservices()
@@ -245,7 +255,7 @@ class DbusGenerator:
             if self._dbusservice is not None:
                 self._stop_generator()
                 self._batteryservice = None
-                self._vebusservice = None
+                self._acloadsource = None
                 self._dbusservice.__del__()
                 self._dbusservice = None
                 # Reset conditions
@@ -558,38 +568,47 @@ class DbusGenerator:
         # Update values from battery monitor
         if self._batteryservice is not None:
             batteryservicetype = self._batteryservice.split('.')[2]
-            values['soc'] = self._dbusmonitor.get_value(self._batteryservice, '/Soc')
-            values['batteryvoltage'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/0/Voltage')
-            values['batterycurrent'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/0/Current') * -1
+            if batteryservicetype != 'system':
+                values['soc'] = self._dbusmonitor.get_value(self._batteryservice, '/Soc')
+                values['batteryvoltage'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/0/Voltage')
+                values['batterycurrent'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/0/Current') * -1
+            elif self._dbusmonitor.get_value('com.victronenergy.settings',
+                                           '/Settings/SystemSetup/BatteryService') != self.SERVICE_NOBATTERY:
+                values['soc'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/Battery/Soc')
+                values['batteryvoltage'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/Battery/Voltage')
+                values['batterycurrent'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/Battery/Current') * -1
+            
 
-        if self._vebusservice is not None:
-            values['acload'] = self._dbusmonitor.get_value(self._vebusservice, '/Ac/Out/P')
+        if self._acloadsource is not None:
+            acloadsourceservicetype = self._acloadsource.split('.')[2]
+            if acloadsourceservicetype == 'system':
+                values['acload'] = self._dbusmonitor.get_value(self._acloadsource, '/Ac/Consumption/Total/Power')
+            else:
+                values['acload'] = self._dbusmonitor.get_value(self._acloadsource, '/Ac/Out/P')
 
         return values
 
     def _populate_services_list(self):
-        vebusservices = self._dbusmonitor.get_service_list('com.victronenergy.vebus')
-        batteryservices = self._dbusmonitor.get_service_list('com.victronenergy.battery')
-        self._remove_unconnected_services(vebusservices)
-        # User can set a vebus as battery monitor, add the option
-        batteryservices.update(vebusservices)
+        services = json.loads(self._dbusmonitor.get_value('com.victronenergy.system', '/AvailableBatteryServices'))
+        acsources = dict()
+        batteries = services
 
-        vebus = {self.SERVICE_NOVEBUS: 'None'}
-        battery = {self.SERVICE_NOBATTERY: 'None'}
+        # We don't need default, remove from list
+        batteries.pop('default', None)
 
-        for servicename, instance in vebusservices.items():
-            key = '%s/%s' % ('.'.join(servicename.split('.')[0:3]), instance)
-            vebus[key] = self._get_readable_service_name(servicename)
+        # Add only non battery services to the list
+        for item in services:
+            if 'com.victronenergy.battery' not in item:
+                acsources[item] = services[item]
 
-        for servicename, instance in batteryservices.items():
-            key = '%s/%s' % ('.'.join(servicename.split('.')[0:3]), instance)
-            battery[key] = self._get_readable_service_name(servicename)
+        batteries[self.SERVICE_SYSTEMCALC] = 'Use system settings' 
+        acsources[self.SERVICE_SYSTEMCALC] = 'Use system AC source' 
 
-        self._dbusservice['/AvailableBatteryServices'] = json.dumps(battery)
-        self._dbusservice['/AvailableVebusServices'] = json.dumps(vebus)
+        self._dbusservice['/AvailableBatteryServices'] = json.dumps(batteries)
+        self._dbusservice['/AvailableVebusServices'] = json.dumps(acsources)
 
     def _determineservices(self):
-        vebusservice = self._settings['vebusservice']
+        acloadsourceservice = self._settings['acloadsource']
         batteryservice = self._settings['batteryservice']
 
         if batteryservice != self.SERVICE_NOBATTERY and batteryservice != '':
@@ -597,30 +616,18 @@ class DbusGenerator:
         else:
             self._batteryservice = None
 
-        if vebusservice != self.SERVICE_NOVEBUS and vebusservice != '':
-            self._vebusservice = self._get_service_path(vebusservice)
-            self._dbusservice['/VebusServiceName'] = self._vebusservice
+        if acloadsourceservice != self.SERVICE_NOVEBUS and acloadsourceservice != '':
+            self._acloadsource = self._get_service_path(acloadsourceservice)
         else:
-            self._vebusservice = None
+            self._acloadsource = None
+
+        self._dbusservice['/AcLoadSourceService'] = self._acloadsource
 
         self._changed = True
 
-    def _get_readable_service_name(self, servicename):
-        return (self._dbusmonitor.get_value(servicename, '/ProductName') + ' on ' +
-                self._dbusmonitor.get_value(servicename, '/Mgmt/Connection'))
-
-    def _remove_unconnected_services(self, services):
-        # Workaround: because com.victronenergy.vebus is available even when there is no vebus product
-        # connected. Remove any that is not connected. For this, we use /State since mandatory path
-        # /Connected is not implemented in mk2dbus.
-        for servicename in services.keys():
-            if ((servicename.split('.')[2] == 'vebus' and self._dbusmonitor.get_value(servicename, '/State') is None)
-                    or self._dbusmonitor.get_value(servicename, '/Connected') != 1
-                    or self._dbusmonitor.get_value(servicename, '/ProductName') is None
-                    or self._dbusmonitor.get_value(servicename, '/Mgmt/Connection') is None):
-                del services[servicename]
-
     def _get_service_path(self, service):
+        if service == self.SERVICE_SYSTEMCALC:
+            return service
         s = service.split('/')
         assert len(s) == 2, 'The setting (%s) is invalid!' % service
         serviceclass = s[0]
