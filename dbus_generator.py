@@ -26,11 +26,12 @@ from os import environ
 # Victron packages
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), './ext/velib_python'))
 from vedbus import VeDbusService
+from vedbus import VeDbusItemImport
 from dbusmonitor import DbusMonitor
 from settingsdevice import SettingsDevice
 from logger import setup_logging
 
-softwareversion = '0.9'
+softwareversion = '1.1'
 dbusgenerator = None
 
 
@@ -38,18 +39,16 @@ class DbusGenerator:
 
     def __init__(self):
         self.RELAY_GPIO_FILE = '/sys/class/gpio/gpio182/value'
-        self.SERVICE_NOBATTERY = 'nobattery'
-        self.SERVICE_NOVEBUS = 'noac'
-        self.SERVICE_SYSTEMCALC = 'com.victronenergy.system'
         self.HISTORY_DAYS = 30
         self._last_counters_check = 0
         self._dbusservice = None
         self._batteryservice = None
-        self._acloadsource = None
         self._starttime = 0
         self._manualstarttimer = 0
         self._last_runtime_update = 0
         self.timer_runnning = 0
+        self.batteryservice_import = None
+        self.bus = dbus.SystemBus() if (platform.machine() == 'armv7l') else dbus.SessionBus()
 
         self._condition_stack = {
             'batteryvoltage': {
@@ -101,6 +100,7 @@ class DbusGenerator:
                 '/Ac/Out/P': dummy,
                 '/Dc/0/Current': dummy,
                 '/Dc/0/Voltage': dummy,
+                '/Dc/1/Power': dummy,
                 '/Soc': dummy
             },
             'com.victronenergy.battery': {
@@ -110,6 +110,12 @@ class DbusGenerator:
                 '/Dc/0/Voltage': dummy,
                 '/Dc/0/Current': dummy,
                 '/Dc/0/Power': dummy,
+                '/Dc/1/Voltage': dummy,
+                '/Dc/1/Current': dummy,
+                '/Dc/1/Power': dummy,
+                '/Dc/2/Voltage': dummy,
+                '/Dc/2/Current': dummy,
+                '/Dc/2/Power': dummy,
                 '/Soc': dummy
             },
             'com.victronenergy.settings': {   # This is not our setting so do it here. not in supportedSettings
@@ -123,7 +129,8 @@ class DbusGenerator:
                 '/Dc/Battery/Soc': dummy,
                 '/Dc/Battery/Voltage': dummy,
                 '/Dc/Battery/Current': dummy,
-                '/Ac/Consumption/Power': dummy,
+                '/Ac/Consumption/Total/Power': dummy,
+                '/AutoSelectedBatteryMeasurement': dummy,
                 }
         }, self._dbus_value_changed, self._device_added, self._device_removed)
 
@@ -132,13 +139,12 @@ class DbusGenerator:
 
         # Connect to localsettings
         self._settings = SettingsDevice(
-            bus=dbus.SystemBus() if (platform.machine() == 'armv7l') else dbus.SessionBus(),
+            bus=self.bus,
             supportedSettings={
                 'autostart': ['/Settings/Generator/0/AutoStart', 0, 0, 1],
                 'accumulateddaily': ['/Settings/Generator/0/AccumulatedDaily', '', 0, 0],
                 'accumulatedtotal': ['/Settings/Generator/0/AccumulatedTotal', 0, 0, 0],
-                'batteryservice': ['/Settings/Generator/0/BatteryService', self.SERVICE_NOBATTERY, 0, 0],
-                'acloadsource': ['/Settings/Generator/0/AcLoadSourceService', self.SERVICE_NOVEBUS, 0, 0],
+                'batteryservice': ['/Settings/Generator/0/BatteryService', "default", 0, 0],
                 'minimumruntime': ['/Settings/Generator/0/MinimumRuntime', 0, 0, 86400],  # minutes
                 # Time zones
                 'timezonesenabled': ['/Settings/Generator/0/TimeZones/Enabled', 0, 0, 1],
@@ -226,30 +232,21 @@ class DbusGenerator:
                 self._dbusservice.add_path('/ManualStartTimer', value=0, writeable=True)
                 # Silent mode active
                 self._dbusservice.add_path('/SecondaryTimeZone', value=0)
-                # Battery services
-                self._dbusservice.add_path('/AvailableBatteryServices', value=None)
-                # Vebus services
-                self._dbusservice.add_path('/AvailableVebusServices', value=None)
-                # As the user can select the vebus/acloadsource service and is not yet possible to get the servie name from the gui
-                # we need to provide it
-                self._dbusservice.add_path('/AcLoadSourceService', value=None)
 
                 self._determineservices()
 
                 self._batteryservice = None
                 self._acloadsource = None
-                self._populate_services_list()
                 self._determineservices()
 
                 if self._batteryservice is not None:
                     logger.info('Battery service we need (%s) found! Using it for generator start/stop'
-                                % self._get_service_path(self._settings['batteryservice']))
+                                % self._settings['batteryservice'].split("/")[0])
 
                 elif self._acloadsource is not None:
                     logger.info('VE.Bus service we need (%s) found! Using it for generator start/stop'
-                                % self._get_service_path(self._settings['acloadsource']))
+                                % self._settings['batteryservice'].split("/")[0])
             else:
-                self._populate_services_list()
                 self._determineservices()
         else:
             if self._dbusservice is not None:
@@ -334,7 +331,7 @@ class DbusGenerator:
         # Update current and accumulated runtime.
         if self._dbusservice['/State'] == 1:
             self._dbusservice['/Runtime'] = int(time.time() - self._starttime)
-            # By performance reasons, accumulated runtime is onle updated
+            # By performance reasons, accumulated runtime is only updated
             # once per 10s. When the generator stops is also updated.
             if self._dbusservice['/Runtime'] - self._last_runtime_update >= 10:
                 self._update_accumulated_time()
@@ -565,83 +562,43 @@ class DbusGenerator:
             'soc': None,
             'acload': None
         }
-        # Update values from battery monitor
         if self._batteryservice is not None:
-            batteryservicetype = self._batteryservice.split('.')[2]
-            if batteryservicetype != 'system':
-                values['soc'] = self._dbusmonitor.get_value(self._batteryservice, '/Soc')
-                values['batteryvoltage'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/0/Voltage')
-                values['batterycurrent'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/0/Current') * -1
-            elif self._dbusmonitor.get_value('com.victronenergy.settings',
-                                           '/Settings/SystemSetup/BatteryService') != self.SERVICE_NOBATTERY:
-                values['soc'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/Battery/Soc')
-                values['batteryvoltage'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/Battery/Voltage')
-                values['batterycurrent'] = self._dbusmonitor.get_value(self._batteryservice, '/Dc/Battery/Current') * -1
-            
+	        # Update values from battery monitor
+	        batteryservice = self._batteryservice.split('/')[0]
+	        battery = "/" + self._batteryservice.split('/', 1)[1]
+        	values['soc'] = self._dbusmonitor.get_value(batteryservice, '/Soc')
+        	values['batteryvoltage'] = self._dbusmonitor.get_value(batteryservice, battery + '/Voltage')
+        	values['batterycurrent'] = self._dbusmonitor.get_value(batteryservice, battery + '/Current') * -1
 
-        if self._acloadsource is not None:
-            acloadsourceservicetype = self._acloadsource.split('.')[2]
-            if acloadsourceservicetype == 'system':
-                values['acload'] = self._dbusmonitor.get_value(self._acloadsource, '/Ac/Consumption/Total/Power')
-            else:
-                values['acload'] = self._dbusmonitor.get_value(self._acloadsource, '/Ac/Out/P')
-
+        values['acload'] = self._dbusmonitor.get_value('com.victronenergy.system', '/Ac/Consumption/Total/Power')
         return values
 
-    def _populate_services_list(self):
-        services = json.loads(self._dbusmonitor.get_value('com.victronenergy.system', '/AvailableBatteryServices'))
-        acsources = dict()
-        batteries = services
-
-        # We don't need default, remove from list
-        batteries.pop('default', None)
-
-        # Add only non battery services to the list
-        for item in services:
-            if 'com.victronenergy.battery' not in item:
-                acsources[item] = services[item]
-
-        batteries[self.SERVICE_SYSTEMCALC] = 'Use system settings' 
-        acsources[self.SERVICE_SYSTEMCALC] = 'Use system AC source' 
-
-        self._dbusservice['/AvailableBatteryServices'] = json.dumps(batteries)
-        self._dbusservice['/AvailableVebusServices'] = json.dumps(acsources)
-
     def _determineservices(self):
-        acloadsourceservice = self._settings['acloadsource']
-        batteryservice = self._settings['batteryservice']
+    	dummy = {'code': None, 'whenToLog': 'configChange', 'accessLevel': None}
 
-        if batteryservice != self.SERVICE_NOBATTERY and batteryservice != '':
-            self._batteryservice = self._get_service_path(batteryservice)
-        else:
-            self._batteryservice = None
+    	if len(self._settings['batteryservice'].split("/")) < 3:
+    		if self._settings['batteryservice'] == 'default':
+    			service_auto = self._dbusmonitor.get_value('com.victronenergy.system','/AutoSelectedBatteryMeasurement')
+    			batteryservicename = '/ServiceMapping/' + service_auto.split("/")[0]
+    			battery_number = service_auto.split("/", 1)[1]
+    		else:
+    			self._batteryservice = None
+	    		return
+    	else:
+    		batteryservicename = '/ServiceMapping/' + self._settings['batteryservice'].split("/")[0]
+    		battery_number = self._settings['batteryservice'].split("/", 1)[1]
+    		
+    
+    	if self.batteryservice_import is None:
+    		self.batteryservice_import = VeDbusItemImport(bus = self.bus , serviceName = "com.victronenergy.system", path = batteryservicename, eventCallback=None, createsignal=True)
+    	else:
+    		if self.batteryservice_import.path != batteryservicename:
+    			self.batteryservice_import = VeDbusItemImport(bus = self.bus , serviceName = "com.victronenergy.system", path = batteryservicename, eventCallback=None, createsignal=True)
 
-        if acloadsourceservice != self.SERVICE_NOVEBUS and acloadsourceservice != '':
-            self._acloadsource = self._get_service_path(acloadsourceservice)
-        else:
-            self._acloadsource = None
-
-        self._dbusservice['/AcLoadSourceService'] = self._acloadsource
-
+        batteryservice =  self.batteryservice_import.get_value()
+        self._batteryservice = batteryservice + "/" + battery_number if batteryservice != None else None
+      
         self._changed = True
-
-    def _get_service_path(self, service):
-        if service == self.SERVICE_SYSTEMCALC:
-            return service
-        s = service.split('/')
-        assert len(s) == 2, 'The setting (%s) is invalid!' % service
-        serviceclass = s[0]
-        instance = int(s[1])
-        services = self._dbusmonitor.get_service_list(classfilter=serviceclass)
-        if instance not in services.values():
-            # Once chosen battery monitor does not exist. Don't auto change the setting (it might come
-            # back). And also don't autoselect another.
-            servicepath = None
-        else:
-            # According to https://www.python.org/dev/peps/pep-3106/, dict.keys() and dict.values()
-            # always have the same order.
-            servicepath = services.keys()[services.values().index(instance)]
-        return servicepath
 
     def _start_generator(self, condition):
         # This function will start the generator in the case generator not

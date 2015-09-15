@@ -24,8 +24,7 @@ class TestGenerator(unittest.TestCase):
         self.vebusservice = 'com.victronenergy.vebus.tty23'
         self.set_value(self._settingspath, "/Settings/Relay/Function", 1)
         self.fill_history()
-        self.set_value(self._settingspath, "/Settings/Generator/0/AcLoadSourceService", "com.victronenergy.vebus/222")
-        self.set_value(self._settingspath, "/Settings/Generator/0/BatteryService", "com.victronenergy.battery/223")
+        self.set_value(self._settingspath, "/Settings/Generator/0/BatteryService", "com_victronenergy_battery_223/Dc/0")
         self.firstRun = False
         self.reset_all_conditons()
         if (platform.machine() == 'armv7l'):
@@ -192,7 +191,7 @@ class TestGenerator(unittest.TestCase):
 
         currenttime = time.time() - time.mktime(datetime.date.today().timetuple())
 
-        self.set_value(self.vebusservice, '/Ac/Out/P', 24)
+        self.set_value(self.vebusservice, '/Ac/Out/L1/P', 24)
         self.set_value(self.batteryservice, '/Dc/0/Current', -25)
         self.set_value(self.batteryservice, '/Dc/0/Voltage', 23)
 
@@ -216,7 +215,7 @@ class TestGenerator(unittest.TestCase):
         self.set_value(self.batteryservice, '/Soc', 85)
 
         self.assertEqual('acload', self.wait_and_get('/RunningByCondition', stoptimer + 2))
-        self.set_value(self.vebusservice, '/Ac/Out/P', 1)
+        self.set_value(self.vebusservice, '/Ac/Out/L1/P', 1)
 
         self.assertEqual('batterycurrent', self.wait_and_get('/RunningByCondition', stoptimer + 2))
         self.set_value(self.batteryservice, '/Dc/0/Current', -10)
@@ -242,17 +241,17 @@ class TestGenerator(unittest.TestCase):
         self.assertEqual(1, self.get_state(2))
 
     def test_remove_vebus_service(self):
-        self.set_value(self.vebusservice, '/Ac/Out/P', 15)
+        self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
         self.set_condition_timed("AcLoad", 14, 10, 0, 5, 1)
         self.assertEqual(1, self.get_state(2))
         self.stop_services()
         self.assertEqual(0, self.get_state(2))
         self.start_services()
-        self.set_value(self.vebusservice, '/Ac/Out/P', 15)
-        self.assertEqual(1, self.get_state(2))
+        self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
+        self.assertEqual(1, self.get_state(3))
 
     def test_go_off(self):
-        self.set_value(self.vebusservice, '/Ac/Out/P', 15)
+        self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
         self.set_condition_timed("AcLoad", 14, 10, 5, 5, 1)
         self.assertEqual(1, self.get_state(8))
         # Set relay function to alarm relay
@@ -314,7 +313,7 @@ class TestGenerator(unittest.TestCase):
 if __name__ == '__main__':
     # As the evaluation of the conditions is performed once per second and applying settings takes a while,
     # a safety delay of 3 extra seconds is added when checking values.
-    for i in range(20):
+    for i in range(1):
         unittest.batteryp = Popen([sys.executable, "dummybattery.py"], stdout=PIPE, stderr=PIPE)
         unittest.vebusp = Popen([sys.executable, "dummyvebus.py"], stdout=PIPE, stderr=PIPE)
         while unittest.vebusp.stderr.readline().find(":/Soc") == -1:
