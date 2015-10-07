@@ -32,7 +32,7 @@ from dbusmonitor import DbusMonitor
 from settingsdevice import SettingsDevice
 from logger import setup_logging
 
-softwareversion = '1.2.1'
+softwareversion = '1.2.2'
 dbusgenerator = None
 
 
