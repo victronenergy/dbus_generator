@@ -126,40 +126,40 @@ class DbusGenerator:
 				'accumulatedtotal': ['/Settings/Generator0/AccumulatedTotal', 0, 0, 0],
 				'batterymeasurement': ['/Settings/Generator0/BatteryService', "default", 0, 0],
 				'minimumruntime': ['/Settings/Generator0/MinimumRuntime', 0, 0, 86400],  # minutes
-				# Time zones
-				'timezonesenabled': ['/Settings/Generator0/TimeZones/Enabled', 0, 0, 1],
-				'timezonesstarttimer': ['/Settings/Generator0/TimeZones/StartTime', 75600, 0, 86400],
-				'timezonesendtime': ['/Settings/Generator0/TimeZones/EndTime', 21600, 0, 86400],
+				# Quiet hours
+				'quiethoursenabled': ['/Settings/Generator0/QuietHours/Enabled', 0, 0, 1],
+				'quiethoursstarttimer': ['/Settings/Generator0/QuietHours/StartTime', 75600, 0, 86400],
+				'quiethoursendtime': ['/Settings/Generator0/QuietHours/EndTime', 21600, 0, 86400],
 				# SOC
 				'socenabled': ['/Settings/Generator0/Soc/Enabled', 0, 0, 1],
 				'socstart': ['/Settings/Generator0/Soc/StartValue', 90, 0, 100],
 				'socstop': ['/Settings/Generator0/Soc/StopValue', 90, 0, 100],
-				'tz_socstart': ['/Settings/Generator0/Soc/TimezoneStartValue', 90, 0, 100],
-				'tz_socstop': ['/Settings/Generator0/Soc/TimezoneStopValue', 90, 0, 100],
+				'qh_socstart': ['/Settings/Generator0/Soc/QuietHoursStartValue', 90, 0, 100],
+				'qh_socstop': ['/Settings/Generator0/Soc/QuietHoursStopValue', 90, 0, 100],
 				# Voltage
 				'batteryvoltageenabled': ['/Settings/Generator0/BatteryVoltage/Enabled', 0, 0, 1],
 				'batteryvoltagestart': ['/Settings/Generator0/BatteryVoltage/StartValue', 11.5, 0, 150],
 				'batteryvoltagestop': ['/Settings/Generator0/BatteryVoltage/StopValue', 12.4, 0, 150],
 				'batteryvoltagestarttimer': ['/Settings/Generator0/BatteryVoltage/StartTimer', 20, 0, 10000],
 				'batteryvoltagestoptimer': ['/Settings/Generator0/BatteryVoltage/StopTimer', 20, 0, 10000],
-				'tz_batteryvoltagestart': ['/Settings/Generator0/BatteryVoltage/TimezoneStartValue', 11.9, 0, 100],
-				'tz_batteryvoltagestop': ['/Settings/Generator0/BatteryVoltage/TimezoneStopValue', 12.4, 0, 100],
+				'qh_batteryvoltagestart': ['/Settings/Generator0/BatteryVoltage/QuietHoursStartValue', 11.9, 0, 100],
+				'qh_batteryvoltagestop': ['/Settings/Generator0/BatteryVoltage/QuietHoursStopValue', 12.4, 0, 100],
 				# Current
 				'batterycurrentenabled': ['/Settings/Generator0/BatteryCurrent/Enabled', 0, 0, 1],
 				'batterycurrentstart': ['/Settings/Generator0/BatteryCurrent/StartValue', 10.5, 0.5, 1000],
 				'batterycurrentstop': ['/Settings/Generator0/BatteryCurrent/StopValue', 5.5, 0, 1000],
 				'batterycurrentstarttimer': ['/Settings/Generator0/BatteryCurrent/StartTimer', 20, 0, 10000],
 				'batterycurrentstoptimer': ['/Settings/Generator0/BatteryCurrent/StopTimer', 20, 0, 10000],
-				'tz_batterycurrentstart': ['/Settings/Generator0/BatteryCurrent/TimezoneStartValue', 20.5, 0, 1000],
-				'tz_batterycurrentstop': ['/Settings/Generator0/BatteryCurrent/TimezoneStopValue', 15.5, 0, 1000],
+				'qh_batterycurrentstart': ['/Settings/Generator0/BatteryCurrent/QuietHoursStartValue', 20.5, 0, 1000],
+				'qh_batterycurrentstop': ['/Settings/Generator0/BatteryCurrent/QuietHoursStopValue', 15.5, 0, 1000],
 				# AC load
 				'acloadenabled': ['/Settings/Generator0/AcLoad/Enabled', 0, 0, 1],
 				'acloadstart': ['/Settings/Generator0/AcLoad/StartValue', 1600, 5, 100000],
 				'acloadstop': ['/Settings/Generator0/AcLoad/StopValue', 800, 0, 100000],
 				'acloadstarttimer': ['/Settings/Generator0/AcLoad/StartTimer', 20, 0, 10000],
 				'acloadstoptimer': ['/Settings/Generator0/AcLoad/StopTimer', 20, 0, 10000],
-				'tz_acloadstart': ['/Settings/Generator0/AcLoad/TimezoneStartValue', 1900, 0, 100000],
-				'tz_acloadstop': ['/Settings/Generator0/AcLoad/TimezoneStopValue', 1200, 0, 100000],
+				'qh_acloadstart': ['/Settings/Generator0/AcLoad/QuietHoursStartValue', 1900, 0, 100000],
+				'qh_acloadstop': ['/Settings/Generator0/AcLoad/QuietHoursStopValue', 1200, 0, 100000],
 				# TestRun
 				'testrunenabled': ['/Settings/Generator0/TestRun/Enabled', 0, 0, 1],
 				'testrunstartdate': ['/Settings/Generator0/TestRun/StartDate', time.time(), 0, 10000000000.1],
@@ -218,7 +218,7 @@ class DbusGenerator:
 				# Manual start timer
 				self._dbusservice.add_path('/ManualStartTimer', value=0, writeable=True)
 				# Silent mode active
-				self._dbusservice.add_path('/SecondaryTimeZone', value=0)
+				self._dbusservice.add_path('/QuietHours', value=0)
 
 			self._determineservices()
 
@@ -296,7 +296,7 @@ class DbusGenerator:
 		self.timer_runnning = False
 		values = self._get_updated_values()
 
-		self._check_secondary_timezone()
+		self._check_quiet_hours()
 
 		# New day, register it
 		if self._last_counters_check < today and self._dbusservice['/State'] == 0:
@@ -364,7 +364,7 @@ class DbusGenerator:
 
 	def _evaluate_condition(self, condition, value):
 		name = condition['name']
-		setting = ('tz_' if self._dbusservice['/SecondaryTimeZone'] == 1 else '') + name
+		setting = ('qh_' if self._dbusservice['/QuietHours'] == 1 else '') + name
 		startvalue = self._settings[setting + 'start']
 		stopvalue = self._settings[setting + 'stop']
 
@@ -464,27 +464,27 @@ class DbusGenerator:
 													 self._settings['testrunstarttimer'])
 		return start and needed
 
-	def _check_secondary_timezone(self):
+	def _check_quiet_hours(self):
 		active = False
-		if self._settings['timezonesenabled'] == 1:
+		if self._settings['quiethoursenabled'] == 1:
 			# Seconds after today 00:00
 			timeinseconds = time.time() - time.mktime(datetime.date.today().timetuple())
-			timezonesstart = self._settings['timezonesstarttimer']
-			timezonesend = self._settings['timezonesendtime']
+			quiethoursstart = self._settings['quiethoursstarttimer']
+			quiethoursend = self._settings['quiethoursendtime']
 
 			# Check if the current time is between the start time and end time
-			if timezonesstart < timezonesend:
-				active = timezonesstart <= timeinseconds and timeinseconds < timezonesend
+			if quiethoursstart < quiethoursend:
+				active = quiethoursstart <= timeinseconds and timeinseconds < quiethoursend
 			else:  # End time is lower than start time, example Start: 21:00, end: 08:00
-				active = not (timezonesend < timeinseconds and timeinseconds < timezonesstart)
+				active = not (quiethoursend < timeinseconds and timeinseconds < quiethoursstart)
 
-		if self._dbusservice['/SecondaryTimeZone'] == 0 and active:
-			logger.info('Entering to secondary timezone timezone')
+		if self._dbusservice['/QuietHours'] == 0 and active:
+			logger.info('Entering to quiet mode')
 
-		elif self._dbusservice['/SecondaryTimeZone'] == 1 and not active:
-			logger.info('Leaving secondary timezone')
+		elif self._dbusservice['/QuietHours'] == 1 and not active:
+			logger.info('Leaving secondary quiet mode')
 
-		self._dbusservice['/SecondaryTimeZone'] = int(active)
+		self._dbusservice['/QuietHours'] = int(active)
 
 		return active
 

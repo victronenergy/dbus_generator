@@ -63,7 +63,7 @@ class TestGenerator(unittest.TestCase):
 		self.set_condition_timed("BatteryVoltage", 0, 0, 0, 0, 0)
 		self.set_condition_timed("AcLoad", 0, 0, 0, 0, 0)
 		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Enabled', 0)
-		self.set_value(self._settingspath, '/Settings/Generator0/TimeZones/Enabled', 0)
+		self.set_value(self._settingspath, '/Settings/Generator0/QuietHours/Enabled', 0)
 		self.set_value(self._settingspath, '/Settings/Generator0/MinimumRuntime', 0)
 		self.set_value(self._generatorpath, '/ManualStart', 0)
 		self.set_value(self._generatorpath, '/ManualStartTimer', 0)
@@ -166,11 +166,11 @@ class TestGenerator(unittest.TestCase):
 		self.assertEqual(1, self.wait_and_get('/SkipTestRun', 2))
 		self.assertEqual(0, self.get_state(0))
 
-	def test_timezones_mode(self):
+	def test_quiethours_mode(self):
 
 		currenttime = time.time() - time.mktime(datetime.date.today().timetuple())
-		self.set_value(self._settingspath, '/Settings/Generator0/TimeZones/StartTime', currenttime)
-		self.set_value(self._settingspath, '/Settings/Generator0/TimeZones/EndTime', currenttime + 20)
+		self.set_value(self._settingspath, '/Settings/Generator0/QuietHours/StartTime', currenttime)
+		self.set_value(self._settingspath, '/Settings/Generator0/QuietHours/EndTime', currenttime + 20)
 
 		self.set_value(self.batteryservice, '/Dc/0/Current', -15)
 		self.set_condition_timed("BatteryCurrent", 15, 10, 2, 2, 1)
@@ -178,7 +178,7 @@ class TestGenerator(unittest.TestCase):
 
 		# Battery current condition must make generator start
 		self.assertEqual(1, self.wait_and_get('/State', 5))
-		self.set_value(self._settingspath, '/Settings/Generator0/TimeZones/Enabled', 1)
+		self.set_value(self._settingspath, '/Settings/Generator0/QuietHours/Enabled', 1)
 
 		# Entering to secondary time zone, generator must stop after stroptimer
 		self.assertEqual(0, self.wait_and_get('/State', 5))
