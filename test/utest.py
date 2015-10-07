@@ -25,7 +25,7 @@ class TestGenerator(unittest.TestCase):
 		self.vebusservice = 'com.victronenergy.vebus.tty23'
 		self.set_value(self._settingspath, "/Settings/Relay/Function", 1)
 		self.fill_history()
-		self.set_value(self._settingspath, "/Settings/Generator/0/BatteryService", "com_victronenergy_battery_223/Dc/0")
+		self.set_value(self._settingspath, "/Settings/Generator0/BatteryService", "com_victronenergy_battery_223/Dc/0")
 		self.firstRun = False
 		self.reset_all_conditons()
 		if (platform.machine() == 'armv7l'):
@@ -62,9 +62,9 @@ class TestGenerator(unittest.TestCase):
 		self.set_condition_timed("BatteryCurrent", 0, 0, 0, 0, 0)
 		self.set_condition_timed("BatteryVoltage", 0, 0, 0, 0, 0)
 		self.set_condition_timed("AcLoad", 0, 0, 0, 0, 0)
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/Enabled', 0)
-		self.set_value(self._settingspath, '/Settings/Generator/0/TimeZones/Enabled', 0)
-		self.set_value(self._settingspath, '/Settings/Generator/0/MinimumRuntime', 0)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Enabled', 0)
+		self.set_value(self._settingspath, '/Settings/Generator0/TimeZones/Enabled', 0)
+		self.set_value(self._settingspath, '/Settings/Generator0/MinimumRuntime', 0)
 		self.set_value(self._generatorpath, '/ManualStart', 0)
 		self.set_value(self._generatorpath, '/ManualStartTimer', 0)
 		time.sleep(2)  # Make sure generator stops
@@ -75,8 +75,8 @@ class TestGenerator(unittest.TestCase):
 		for i in range(30):
 			date = today - (i * 86400)
 			history[str(date)] = random.randint(1800, 3600)
-		self.set_value(self._settingspath, '/Settings/Generator/0/AccumulatedDaily', json.dumps(history, sort_keys=True))
-		self.set_value(self._settingspath, '/Settings/Generator/0/AccumulatedTotal', sum(history.values()))
+		self.set_value(self._settingspath, '/Settings/Generator0/AccumulatedDaily', json.dumps(history, sort_keys=True))
+		self.set_value(self._settingspath, '/Settings/Generator0/AccumulatedTotal', sum(history.values()))
 
 	def test_timed_condition(self):
 		# Make the condition timer start setting current value to start/stop value
@@ -113,7 +113,7 @@ class TestGenerator(unittest.TestCase):
 		self.assertEqual(0, self.get_state(5))
 
 	def test_minimum_runtime(self):
-		self.set_value(self._settingspath, '/Settings/Generator/0/MinimumRuntime', 1)
+		self.set_value(self._settingspath, '/Settings/Generator0/MinimumRuntime', 1)
 		self.set_condition_timed("BatteryCurrent", 15, 10, 2, 2, 1)
 		self.set_value(self.batteryservice, '/Dc/0/Current', -15)
 		# Generator started
@@ -148,20 +148,20 @@ class TestGenerator(unittest.TestCase):
 		setdate = today - (interval * 86400)
 		currenttime = time.time() - time.mktime(datetime.date.today().timetuple())
 
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/Enabled', 1)
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/SkipRuntime', 36000)
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/StartDate', setdate)
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/StartTime', currenttime)
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/Interval', interval)
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/Duration', 15)
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/Enabled', 1)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Enabled', 1)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/SkipRuntime', 36000)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/StartDate', setdate)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/StartTime', currenttime)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Interval', interval)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Duration', 15)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Enabled', 1)
 
 		self.assertEqual(1, self.get_state(3))
 		self.assertEqual(1, self.get_state(7))
 		self.assertEqual(0, self.get_state(8))
 
 		# Change the accumulated time to one hour, test run should be skipped
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/SkipRuntime', 3600)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/SkipRuntime', 3600)
 
 		self.assertEqual(1, self.wait_and_get('/SkipTestRun', 2))
 		self.assertEqual(0, self.get_state(0))
@@ -169,8 +169,8 @@ class TestGenerator(unittest.TestCase):
 	def test_timezones_mode(self):
 
 		currenttime = time.time() - time.mktime(datetime.date.today().timetuple())
-		self.set_value(self._settingspath, '/Settings/Generator/0/TimeZones/StartTime', currenttime)
-		self.set_value(self._settingspath, '/Settings/Generator/0/TimeZones/EndTime', currenttime + 20)
+		self.set_value(self._settingspath, '/Settings/Generator0/TimeZones/StartTime', currenttime)
+		self.set_value(self._settingspath, '/Settings/Generator0/TimeZones/EndTime', currenttime + 20)
 
 		self.set_value(self.batteryservice, '/Dc/0/Current', -15)
 		self.set_condition_timed("BatteryCurrent", 15, 10, 2, 2, 1)
@@ -178,7 +178,7 @@ class TestGenerator(unittest.TestCase):
 
 		# Battery current condition must make generator start
 		self.assertEqual(1, self.wait_and_get('/State', 5))
-		self.set_value(self._settingspath, '/Settings/Generator/0/TimeZones/Enabled', 1)
+		self.set_value(self._settingspath, '/Settings/Generator0/TimeZones/Enabled', 1)
 
 		# Entering to secondary time zone, generator must stop after stroptimer
 		self.assertEqual(0, self.wait_and_get('/State', 5))
@@ -211,11 +211,11 @@ class TestGenerator(unittest.TestCase):
 		self.set_condition_timed("BatteryCurrent", 15, 10, starttimer, stoptimer, 1, emergency)
 		self.set_condition_timed("BatteryVoltage", 23, 24, starttimer, stoptimer, 1, emergency)
 		self.set_value(self.batteryservice, '/Soc', 80)
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/SkipRuntime', 36000)
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/Interval', 1)
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/StartTime', currenttime)
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/Duration', 60)
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/Enabled', 1)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/SkipRuntime', 36000)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Interval', 1)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/StartTime', currenttime)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Duration', 60)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Enabled', 1)
 
 		self.set_value(self._generatorpath, '/ManualStart', 1)
 
@@ -237,7 +237,7 @@ class TestGenerator(unittest.TestCase):
 		self.assertEqual('testrun', self.wait_and_get('/RunningByCondition', stoptimer + 2))
 		self.assertGreaterEqual(self.get_value(self._generatorpath, '/Runtime'), 11)
 
-		self.set_value(self._settingspath, '/Settings/Generator/0/TestRun/Enabled', 0)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Enabled', 0)
 
 		self.assertEqual(0,  self.get_state(2))
 
@@ -309,7 +309,7 @@ class TestGenerator(unittest.TestCase):
 			settings["TimezoneStartValue"] = settings.pop("StartValue")
 			settings["TimezoneStopValue"] = settings.pop("StopValue")
 		for s, v in settings.iteritems():
-			self.set_value(self._settingspath, "/Settings/Generator/0/" + condition + "/" + s, v)
+			self.set_value(self._settingspath, "/Settings/Generator0/" + condition + "/" + s, v)
 
 	def set_condition(self, condition, start, stop, enabled, emergency=False):
 		settings = ({"StartValue": start, "StopValue": stop, "Enabled": enabled})
@@ -317,7 +317,7 @@ class TestGenerator(unittest.TestCase):
 			settings["TimezoneStartValue"] = settings.pop("StartValue")
 			settings["TimezoneStopValue"] = settings.pop("StopValue")
 		for s, v in settings.iteritems():
-			self.set_value(self._settingspath, "/Settings/Generator/0/" + condition + "/" + s, v)
+			self.set_value(self._settingspath, "/Settings/Generator0/" + condition + "/" + s, v)
 
 	def set_value(self, path, setting, value):
 		dbusobject = dbus.Interface(self.bus.get_object(path, setting), None)
