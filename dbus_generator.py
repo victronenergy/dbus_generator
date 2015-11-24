@@ -185,6 +185,17 @@ class DbusGenerator:
 		if self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Function') == 1:
 			if self._dbusservice is None:
 				logger.info('Action! Going on dbus and taking control of the relay.')
+
+				relay_polarity_import = VeDbusItemImport(
+				bus=self._bus, serviceName='com.victronenergy.settings', path='/Settings/Relay/Polarity',
+				eventCallback=None, createsignal=True)
+
+				# As is not possible to keep the relay state during the CCGX power cycles,
+				# set the relay polarity to normally open.
+				if relay_polarity_import.get_value() == 1:
+					relay_polarity_import.set_value(0)
+					logger.info('Setting relay polarity to normally open.')
+
 				# put ourselves on the dbus
 				self._dbusservice = VeDbusService('com.victronenergy.generator.startstop0')
 				self._dbusservice.add_mandatory_paths(
