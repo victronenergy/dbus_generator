@@ -12,7 +12,8 @@ Available conditions:
 - Battery current
 - Battery voltage
 - Maintenance
-
+- Inverter high temperature warning
+- Inverter overload warning
 
 For more details of how it works and all available options, check the manual: http://www.victronenergy.com/live/ccgx:generator_start_stop
 
