@@ -109,10 +109,13 @@ class DbusGenerator:
 				},
 			'com.victronenergy.system': {   # This is not our setting so do it here. not in supportedSettings
 				'/Ac/Consumption/Total/Power': dummy,
+				'/Ac/PvOnOutput/Total/Power': dummy,
+				'/Ac/PvOnGrid/Total/Power': dummy,
+				'/Ac/PvOnGenset/Total/Power': dummy,
+				'/Dc/Pv/Power': dummy,
 				'/AutoSelectedBatteryMeasurement': dummy,
 				}
 		}, self._dbus_value_changed, self._device_added, self._device_removed)
-
 
 		# Set timezone to user selected timezone
 		environ['TZ'] = self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/System/TimeZone')
@@ -160,6 +163,7 @@ class DbusGenerator:
 				'acloadstoptimer': ['/Settings/Generator0/AcLoad/StopTimer', 20, 0, 10000],
 				'qh_acloadstart': ['/Settings/Generator0/AcLoad/QuietHoursStartValue', 1900, 0, 100000],
 				'qh_acloadstop': ['/Settings/Generator0/AcLoad/QuietHoursStopValue', 1200, 0, 100000],
+				'couplepvpower': ['/Settings/Generator0/AcLoad/CouplePvPower', 0, 0, 1],
 				# TestRun
 				'testrunenabled': ['/Settings/Generator0/TestRun/Enabled', 0, 0, 1],
 				'testrunstartdate': ['/Settings/Generator0/TestRun/StartDate', time.time(), 0, 10000000000.1],
@@ -544,15 +548,36 @@ class DbusGenerator:
 		return summ
 
 	def _get_updated_values(self):
+		pvongenset = self._dbusmonitor.get_value('com.victronenergy.system', '/Ac/PvOnGenset/Total/Power')
+		pvongrid = self._dbusmonitor.get_value('com.victronenergy.system', '/Ac/PvOnGrid/Total/Power')
+		pvonoutput = self._dbusmonitor.get_value('com.victronenergy.system', '/Ac/PvOnOutput/Total/Power')
+		pvondc = self._dbusmonitor.get_value('com.victronenergy.system', '/Dc/Pv/Power')
+		totalpvpower = 0
+
+		if self._settings['couplepvpower']:
+			if pvongenset:
+				totalpvpower += pvongenset
+			if pvongrid:
+				totalpvpower += pvongrid
+			if pvonoutput:
+				totalpvpower += pvonoutput
+			if pvondc:
+				totalpvpower += pvondc
+
 		values = {
-			'batteryvoltage': self._battery_measurement_voltage_import.get_value() if self._battery_measurement_voltage_import else None,
-			'batterycurrent': self._battery_measurement_current_import.get_value() if self._battery_measurement_current_import else None,
+			'batteryvoltage': (self._battery_measurement_voltage_import.get_value()
+							   if self._battery_measurement_voltage_import else None),
+			'batterycurrent': (self._battery_measurement_current_import.get_value()
+							   if self._battery_measurement_current_import else None),
 			'soc': self._battery_measurement_soc_import.get_value() if self._battery_measurement_soc_import else None,
-			'acload': self._dbusmonitor.get_value('com.victronenergy.system', '/Ac/Consumption/Total/Power')
+			'acload': self._dbusmonitor.get_value('com.victronenergy.system', '/Ac/Consumption/Total/Power'),
 		}
 
+		if values['acload']:
+			values['acload'] -= totalpvpower
+
 		if values['batterycurrent']:
-			values['batterycurrent'] = values['batterycurrent'] * -1
+			values['batterycurrent'] *= -1
 
 		return values
 
