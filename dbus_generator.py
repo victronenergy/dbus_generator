@@ -39,6 +39,7 @@ dbusgenerator = None
 class DbusGenerator:
 
 	def __init__(self):
+		self._bus = dbus.SystemBus() if (platform.machine() == 'armv7l') else dbus.SessionBus()
 		self.RELAY_GPIO_FILE = '/sys/class/gpio/gpio182/value'
 		self.HISTORY_DAYS = 30
 		self._last_counters_check = 0
@@ -52,8 +53,6 @@ class DbusGenerator:
 		self._battery_measurement_current_import = None
 		self._battery_measurement_soc_import = None
 		self._battery_measurement_available = True
-		self._bus = dbus.SystemBus() if (platform.machine() == 'armv7l') else dbus.SessionBus()
-		self._buss = dbus.SystemBus() if (platform.machine() == 'armv7l') else dbus.SessionBus()
 
 		self._condition_stack = {
 			'batteryvoltage': {
@@ -131,7 +130,7 @@ class DbusGenerator:
 				'minimumruntime': ['/Settings/Generator0/MinimumRuntime', 0, 0, 86400],  # minutes
 				# Quiet hours
 				'quiethoursenabled': ['/Settings/Generator0/QuietHours/Enabled', 0, 0, 1],
-				'quiethoursstarttimer': ['/Settings/Generator0/QuietHours/StartTime', 75600, 0, 86400],
+				'quiethoursstarttime': ['/Settings/Generator0/QuietHours/StartTime', 75600, 0, 86400],
 				'quiethoursendtime': ['/Settings/Generator0/QuietHours/EndTime', 21600, 0, 86400],
 				# SOC
 				'socenabled': ['/Settings/Generator0/Soc/Enabled', 0, 0, 1],
@@ -184,15 +183,15 @@ class DbusGenerator:
 		gobject.timeout_add(1000, self._handletimertick)
 		self._changed = True
 
-
 	def _evaluate_if_we_are_needed(self):
 		if self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Function') == 1:
 			if self._dbusservice is None:
 				logger.info('Action! Going on dbus and taking control of the relay.')
 
 				relay_polarity_import = VeDbusItemImport(
-				bus=self._bus, serviceName='com.victronenergy.settings', path='/Settings/Relay/Polarity',
-				eventCallback=None, createsignal=True)
+														 bus=self._bus, serviceName='com.victronenergy.settings',
+														 path='/Settings/Relay/Polarity',
+														 eventCallback=None, createsignal=True)
 
 				# As is not possible to keep the relay state during the CCGX power cycles,
 				# set the relay polarity to normally open.
@@ -474,9 +473,8 @@ class DbusGenerator:
 		if not bool(mod) and (time.time() <= stoptime):
 			self._dbusservice['/NextTestRun'] = starttime
 		else:
-			self._dbusservice['/NextTestRun'] = (time.mktime((today +
-													 datetime.timedelta(days=interval - mod)).timetuple()) +
-													 self._settings['testrunstarttimer'])
+			self._dbusservice['/NextTestRun'] = (time.mktime((today + datetime.timedelta(days=interval - mod)).timetuple()) +
+												 self._settings['testrunstarttimer'])
 		return start and needed
 
 	def _check_quiet_hours(self):
@@ -484,7 +482,7 @@ class DbusGenerator:
 		if self._settings['quiethoursenabled'] == 1:
 			# Seconds after today 00:00
 			timeinseconds = time.time() - time.mktime(datetime.date.today().timetuple())
-			quiethoursstart = self._settings['quiethoursstarttimer']
+			quiethoursstart = self._settings['quiethoursstarttime']
 			quiethoursend = self._settings['quiethoursendtime']
 
 			# Check if the current time is between the start time and end time
