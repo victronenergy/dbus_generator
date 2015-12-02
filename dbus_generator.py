@@ -301,6 +301,8 @@ class DbusGenerator:
 	def _handle_changed_setting(self, setting, oldvalue, newvalue):
 		self._changed = True
 		self._evaluate_if_we_are_needed()
+		if setting == 'autostart':
+				logger.info('Autostart function %s.' % ('enabled' if newvalue == 1 else 'disabled'))
 		if self._dbusservice is not None and setting == 'testruninterval':
 			self._dbusservice['/TestRunIntervalRuntime'] = self._interval_runtime(
 															   self._settings['testruninterval'])
@@ -364,14 +366,16 @@ class DbusGenerator:
 			runningbycondition = 'manual'
 			start = True
 
-		# Evaluate value conditions
-		for condition in conditions:
-			start = self._evaluate_condition(self._condition_stack[condition], values[condition]) or start
-			runningbycondition = condition if start and runningbycondition is None else runningbycondition
+		# Autostart conditions will only be evaluated if the autostart functionality is enabled
+		if self._settings['autostart'] == 1:
+			# Evaluate value conditions
+			for condition in conditions:
+				start = self._evaluate_condition(self._condition_stack[condition], values[condition]) or start
+				runningbycondition = condition if start and runningbycondition is None else runningbycondition
 
-		if self._evaluate_testrun_condition() and not start:
-			runningbycondition = 'testrun'
-			start = True
+			if self._evaluate_testrun_condition() and not start:
+				runningbycondition = 'testrun'
+				start = True
 
 		if start:
 			self._start_generator(runningbycondition)
