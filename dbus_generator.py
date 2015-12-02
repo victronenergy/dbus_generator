@@ -51,7 +51,7 @@ class DbusGenerator:
 		self._battery_measurement_voltage_import = None
 		self._battery_measurement_current_import = None
 		self._battery_measurement_soc_import = None
-		self._battery_measurement_available = False
+		self._battery_measurement_available = True
 		self._vebusservice_high_temperature_import = None
 		self._vebusservice_overload_import = None
 		self._vebusservice = None
@@ -289,7 +289,7 @@ class DbusGenerator:
 		self._evaluate_if_we_are_needed()
 
 	def _dbus_value_changed(self, dbusServiceName, dbusPath, options, changes, deviceInstance):
-		if dbusPath == '/AutoSelectedBatteryMeasurement' and self._settings['batterymeasurement'] == ' default':
+		if dbusPath == '/AutoSelectedBatteryMeasurement' and self._settings['batterymeasurement'] == 'default':
 			self._determineservices()
 		if dbusPath == '/Settings/Relay/Function':
 			self._evaluate_if_we_are_needed()
@@ -628,15 +628,17 @@ class DbusGenerator:
 		# SystemCalc.
 
 		batterymeasurement = None
-		vebusservice = None
-		batteryprefix = None
 		batteryservicename = None
+		newbatteryservice = None
+		batteryprefix = ""
+		selectedbattery = self._settings['batterymeasurement']
+		vebusservice = None
 
-		if self._settings['batterymeasurement'] == 'default':
+		if selectedbattery == 'default':
 			batterymeasurement = self._dbusmonitor.get_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement')
-		elif len(self._settings['batterymeasurement'].split("/", 1)) == 2:  # Only very basic sanity checking..
+		elif len(selectedbattery.split("/", 1)) == 2:  # Only very basic sanity checking..
 			batterymeasurement = self._settings['batterymeasurement']
-		elif self._settings['batterymeasurement'] == 'nobattery':
+		elif selectedbattery == 'nobattery':
 			batterymeasurement = None
 		else:
 			# Exception: unexpected value for batterymeasurement
@@ -647,7 +649,8 @@ class DbusGenerator:
 
 		# Get the current battery servicename
 		if self._battery_measurement_voltage_import:
-			oldservice = self._battery_measurement_voltage_import.serviceName + batteryprefix
+			oldservice = (self._battery_measurement_voltage_import.serviceName +
+						  self._battery_measurement_voltage_import.path.replace("/Voltage", ""))
 		else:
 			oldservice = None
 
@@ -659,36 +662,43 @@ class DbusGenerator:
 				eventCallback=None,
 				createsignal=False)
 
-			if batteryprefix and batteryservicename.get_value():
+			if batteryservicename.get_value():
 				newbatteryservice = batteryservicename.get_value() + batteryprefix
 			else:
 				newbatteryservice = None
 
-			if batteryservicename.get_value() and oldservice != newbatteryservice:
-				self._battery_measurement_available = True
+		if batteryservicename and batteryservicename.get_value() and oldservice != newbatteryservice:
+			self._battery_measurement_available = True
 
-				logger.info('Battery service we need (%s) found! Using it for generator start/stop'
-							% self._settings['batterymeasurement'].split("/")[0])
-				self._battery_measurement_voltage_import = VeDbusItemImport(
-					bus=self._bus, serviceName=batteryservicename.get_value(),
-					path=batteryprefix + '/Voltage', eventCallback=None, createsignal=True)
+			logger.info('Battery service we need (%s) found! Using it for generator start/stop'
+						% batterymeasurement)
+			self._battery_measurement_voltage_import = VeDbusItemImport(
+				bus=self._bus, serviceName=batteryservicename.get_value(),
+				path=batteryprefix + '/Voltage', eventCallback=None, createsignal=True)
 
-				self._battery_measurement_current_import = VeDbusItemImport(
-					bus=self._bus, serviceName=batteryservicename.get_value(),
-					path=batteryprefix + '/Current', eventCallback=None, createsignal=True)
+			self._battery_measurement_current_import = VeDbusItemImport(
+				bus=self._bus, serviceName=batteryservicename.get_value(),
+				path=batteryprefix + '/Current', eventCallback=None, createsignal=True)
 
-				# Exception caused by Matthijs :), we forgot to batteryprefix the Soc during the big path-change...
-				self._battery_measurement_soc_import = VeDbusItemImport(
-					bus=self._bus, serviceName=batteryservicename.get_value(),
-					path='/Soc', eventCallback=None, createsignal=True)
+			# Exception caused by Matthijs :), we forgot to batteryprefix the Soc during the big path-change...
+			self._battery_measurement_soc_import = VeDbusItemImport(
+				bus=self._bus, serviceName=batteryservicename.get_value(),
+				path='/Soc', eventCallback=None, createsignal=True)
 
-			elif batteryservicename.get_value() is None and self._battery_measurement_available:
-				self._battery_measurement_voltage_import = None
-				self._battery_measurement_current_import = None
-				self._battery_measurement_soc_import = None
-				logger.info('Battery service we need (%s) is not available! Stop evaluating related conditions'
-							% self._settings['batterymeasurement'].split("/")[0])
-				self._battery_measurement_available = False
+		elif selectedbattery == 'nobattery' and self._battery_measurement_available:
+			logger.info('Battery monitoring disabled! Stop evaluating related conditions')
+			self._battery_measurement_voltage_import = None
+			self._battery_measurement_current_import = None
+			self._battery_measurement_soc_import = None
+			self._battery_measurement_available = False
+
+		elif batteryservicename and batteryservicename.get_value() is None and self._battery_measurement_available:
+			logger.info('Battery service we need (%s) is not available! Stop evaluating related conditions'
+						% batterymeasurement)
+			self._battery_measurement_voltage_import = None
+			self._battery_measurement_current_import = None
+			self._battery_measurement_soc_import = None
+			self._battery_measurement_available = False
 
 		# Get the default VE.Bus service and import high temperature and overload warnings
 		vebusservice = VeDbusItemImport(
