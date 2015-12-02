@@ -13,16 +13,22 @@ import sys
 from subprocess import Popen, PIPE
 from os import environ
 
+
 class TestGenerator(unittest.TestCase):
 
 	def setUp(self):
 		self.start_services('vebus')
 		self.start_services('battery')
+		self.start_services('pvinverter')
+		self.start_services('solarcharger')
+
 		self.bus = dbus.SystemBus() if (platform.machine() == 'armv7l') else dbus.SessionBus()
 		self._settingspath = 'com.victronenergy.settings'
 		self._generatorpath = 'com.victronenergy.generator.startstop0'
 		self.batteryservice = 'com.victronenergy.battery.tty22'
 		self.vebusservice = 'com.victronenergy.vebus.tty23'
+		self.solarchergerservice = 'com.victronenergy.solarcharger.tty33'
+		self.pvinverterservice = 'com.victronenergy.pvinverter.test'
 		self.set_value(self._settingspath, "/Settings/Relay/Function", 1)
 		self.fill_history()
 		self.set_value(self._settingspath, "/Settings/Generator0/BatteryService", "com_victronenergy_battery_223/Dc/0")
@@ -34,39 +40,51 @@ class TestGenerator(unittest.TestCase):
 	def tearDown(self):
 		self.stop_services('battery')
 		self.stop_services('vebus')
-
+		self.stop_services('pvinverter')
+		self.stop_services('solarcharger')
 
 	def start_services(self, service):
 		if service == 'battery':
 			unittest.batteryp = Popen([sys.executable, "dummybattery.py"], stdout=PIPE, stderr=PIPE)
 			while unittest.batteryp.stderr.readline().find(":/Soc") == -1:
 				pass
-		elif service  == 'vebus':
+		elif service == 'vebus':
 			unittest.vebusp = Popen([sys.executable, "dummyvebus.py"], stdout=PIPE, stderr=PIPE)
-			while unittest.vebusp .stderr.readline().find(":/Soc") == -1:
+			while unittest.vebusp.stderr.readline().find(":/Soc") == -1:
+				pass
+		elif service == 'solarcharger':
+			unittest.solarchargerp = Popen([sys.executable, "dummysolarcharger.py"], stdout=PIPE, stderr=PIPE)
+		elif service == 'pvinverter':
+			unittest.pvinverterp = Popen([sys.executable, "dummypvinverter.py"], stdout=PIPE, stderr=PIPE)
+			while unittest.pvinverterp.stderr.readline().find(":/Ac/L3/Power") == -1:
 				pass
 
 	def stop_services(self, service):
 		if service == 'battery':
 			unittest.batteryp.kill()
 			unittest.batteryp.wait()
-		elif service  == 'vebus':
+		elif service == 'vebus':
 			unittest.vebusp.kill()
 			unittest.vebusp.wait()
+		elif service == 'pvinverter':
+			unittest.pvinverterp.kill()
+			unittest.pvinverterp.wait()
+		elif service == 'solarcharger':
+			unittest.solarchargerp.kill()
+			unittest.solarchargerp.wait()
 
 	def reset_all_conditons(self):
-		# Invert the relay polarity randomly
-		self.polarity = abs(self.get_value(self._settingspath, '/Settings/Relay/Polarity') - 1)
-		self.set_value(self._settingspath, '/Settings/Relay/Polarity', self.polarity)
 		self.set_condition("Soc", 0, 0, 0)
 		self.set_condition_timed("BatteryCurrent", 0, 0, 0, 0, 0)
 		self.set_condition_timed("BatteryVoltage", 0, 0, 0, 0, 0)
 		self.set_condition_timed("AcLoad", 0, 0, 0, 0, 0)
+		self.set_value(self._settingspath, '/Settings/Generator0/AcLoad/CouplePvPower', 0)
 		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Enabled', 0)
 		self.set_value(self._settingspath, '/Settings/Generator0/QuietHours/Enabled', 0)
 		self.set_value(self._settingspath, '/Settings/Generator0/MinimumRuntime', 0)
 		self.set_value(self._generatorpath, '/ManualStart', 0)
 		self.set_value(self._generatorpath, '/ManualStartTimer', 0)
+		self.set_value(self._settingspath, "/Settings/Generator0/AutoStart", 1)
 		time.sleep(2)  # Make sure generator stops
 
 	def fill_history(self):
@@ -137,6 +155,21 @@ class TestGenerator(unittest.TestCase):
 		self.set_value(self._generatorpath, '/ManualStart', 1)
 		self.assertEqual(1, self.get_state(1))
 		self.assertEqual(0, self.get_state(randomtimer + 3))
+
+	def test_ac_solar_coupled(self):
+		self.set_value(self._settingspath, '/Settings/Generator0/AcLoad/CouplePvPower', 1)
+		self.set_condition_timed("AcLoad", 1600, 800, 5, 5, 0, False)
+		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 1700)
+		self.set_condition_timed("AcLoad", 1600, 800, 5, 5, 1, False)
+		self.assertEqual(1, self.get_state(7))
+		self.set_value(self.pvinverterservice, '/Ac/L1/Power', 1000)
+		self.assertEqual(0, self.get_state(7))
+		self.set_value(self.pvinverterservice, '/Ac/L1/Power', 0)
+		self.assertEqual(1, self.get_state(7))
+		self.set_value(self.solarchergerservice, '/Dc/0/Current', 90)
+		self.assertEqual(0, self.get_state(7))
+		self.set_value(self.solarchergerservice, '/Dc/0/Current', 0)
+		self.assertEqual(1, self.get_state(7))
 
 	def test_testrun(self):
 		# The random generated history is set to a maximum of one hour per day, setting the testrun
@@ -264,23 +297,35 @@ class TestGenerator(unittest.TestCase):
 		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
 		self.assertEqual(1, self.get_state(7))
 
+	def test_disable_autostart(self):
+		self.set_condition("Soc", 80, 85, 1)
+		self.set_value(self.batteryservice, '/Soc', 80)
+		self.assertEqual(1, self.get_state(5))
+		self.set_value(self._settingspath, "/Settings/Generator0/AutoStart", 0)
+		self.assertEqual(0, self.get_state(5))
+		# When autostart is off the generator manual start should continue working
+		self.set_value(self._generatorpath, '/ManualStart', 1)
+		self.assertEqual(1, self.get_state(5))
+
 	def test_go_off(self):
 		self.stop_services('vebus')
 		self.start_services('vebus')
 		time.sleep(5)
 		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 16)
-		self.set_condition_timed("AcLoad", 14, 10, 5, 5, 1)
-		self.assertEqual(1, self.get_state(8))
+		self.set_condition_timed("AcLoad", 14, 10, 16, 5, 1)
+		self.assertEqual(1, self.get_state(20))
 		# Set relay function to alarm relay
 		self.set_value(self._settingspath, "/Settings/Relay/Function", 0)
 		time.sleep(5)
 		# Set relay funtion to generator start/stop
 		self.set_value(self._settingspath, "/Settings/Relay/Function", 1)
 		# When the service go off all timers are reset, at this point generator
-		# must be stopped
-		self.assertEqual(0, self.get_state(4))
+		# must be stopped. Times/delaus are long because differences between
+		# PC and CCGX startup times, setting long times we make sure the test will
+		# work on both plattforms.
+		self.assertEqual(0, self.get_state(15))
 		# Timer finished, generator must be started
-		self.assertEqual(1, self.get_state(3))
+		self.assertEqual(1, self.get_state(20))
 
 	def wait_and_get(self, setting, delay):
 		time.sleep(delay)
@@ -288,17 +333,6 @@ class TestGenerator(unittest.TestCase):
 
 	def get_state(self, delay):
 		state = self.wait_and_get('/State', delay)
-		if platform.machine() == 'armv7l':
-			try:
-				relay_gpio_file = open("/sys/class/gpio/gpio182/value", 'r')
-				r = relay_gpio_file.read(1)
-				relay_gpio_file.close()
-			except IOError:
-				print ('Error reading the relay file!')
-
-			relayon = abs(int(r) - self.polarity)
-			self.assertEqual(relayon, state)  # State and relay gpio file must have the same value
-			return relayon
 
 		return state
 
@@ -306,16 +340,16 @@ class TestGenerator(unittest.TestCase):
 		settings = ({"StartValue": start, "StopValue": stop, "StartTimer": startimer,
 					 "StopTimer": stoptimer, "Enabled": enabled})
 		if emergency:
-			settings["TimezoneStartValue"] = settings.pop("StartValue")
-			settings["TimezoneStopValue"] = settings.pop("StopValue")
+			settings["QuietHoursStartValue"] = settings.pop("StartValue")
+			settings["QuietHoursStopValue"] = settings.pop("StopValue")
 		for s, v in settings.iteritems():
 			self.set_value(self._settingspath, "/Settings/Generator0/" + condition + "/" + s, v)
 
 	def set_condition(self, condition, start, stop, enabled, emergency=False):
 		settings = ({"StartValue": start, "StopValue": stop, "Enabled": enabled})
 		if emergency:
-			settings["TimezoneStartValue"] = settings.pop("StartValue")
-			settings["TimezoneStopValue"] = settings.pop("StopValue")
+			settings["QuietHoursStartValue"] = settings.pop("StartValue")
+			settings["QuietHoursStopValue"] = settings.pop("StopValue")
 		for s, v in settings.iteritems():
 			self.set_value(self._settingspath, "/Settings/Generator0/" + condition + "/" + s, v)
 
