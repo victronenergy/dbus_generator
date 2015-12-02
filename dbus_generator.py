@@ -150,7 +150,7 @@ class DbusGenerator:
 		self._settings = SettingsDevice(
 			bus=self._bus,
 			supportedSettings={
-				'autostart': ['/Settings/Generator0/AutoStart', 0, 0, 1],
+				'autostart': ['/Settings/Generator0/AutoStart', 1, 0, 1],
 				'accumulateddaily': ['/Settings/Generator0/AccumulatedDaily', '', 0, 0],
 				'accumulatedtotal': ['/Settings/Generator0/AccumulatedTotal', 0, 0, 0],
 				'batterymeasurement': ['/Settings/Generator0/BatteryService', "default", 0, 0],
