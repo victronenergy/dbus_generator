@@ -48,16 +48,20 @@ class DbusGenerator:
 		self._manualstarttimer = 0
 		self._last_runtime_update = 0
 		self.timer_runnning = 0
-		self.batteryservice_import = None
 		self._battery_measurement_voltage_import = None
 		self._battery_measurement_current_import = None
 		self._battery_measurement_soc_import = None
-		self._battery_measurement_available = True
+		self._battery_measurement_available = False
+		self._vebusservice_high_temperature_import = None
+		self._vebusservice_overload_import = None
+		self._vebusservice = None
+		self._vebusservice_available = False
 
 		self._condition_stack = {
 			'batteryvoltage': {
 				'name': 'batteryvoltage',
 				'reached': False,
+				'boolean': False,
 				'timed': True,
 				'start_timer': 0,
 				'stop_timer': 0,
@@ -67,6 +71,7 @@ class DbusGenerator:
 			'batterycurrent': {
 				'name': 'batterycurrent',
 				'reached': False,
+				'boolean': False,
 				'timed': True,
 				'start_timer': 0,
 				'stop_timer': 0,
@@ -76,6 +81,27 @@ class DbusGenerator:
 			'acload': {
 				'name': 'acload',
 				'reached': False,
+				'boolean': False,
+				'timed': True,
+				'start_timer': 0,
+				'stop_timer': 0,
+				'valid': True,
+				'enabled': False
+			},
+			'inverterhightemp': {
+				'name': 'inverterhightemp',
+				'reached': False,
+				'boolean': True,
+				'timed': True,
+				'start_timer': 0,
+				'stop_timer': 0,
+				'valid': True,
+				'enabled': False
+			},
+			'inverteroverload': {
+				'name': 'inverteroverload',
+				'reached': False,
+				'boolean': True,
 				'timed': True,
 				'start_timer': 0,
 				'stop_timer': 0,
@@ -85,6 +111,7 @@ class DbusGenerator:
 			'soc': {
 				'name': 'soc',
 				'reached': False,
+				'boolean': False,
 				'timed': False,
 				'valid': True,
 				'enabled': False
@@ -163,6 +190,14 @@ class DbusGenerator:
 				'qh_acloadstart': ['/Settings/Generator0/AcLoad/QuietHoursStartValue', 1900, 0, 100000],
 				'qh_acloadstop': ['/Settings/Generator0/AcLoad/QuietHoursStopValue', 1200, 0, 100000],
 				'couplepvpower': ['/Settings/Generator0/AcLoad/CouplePvPower', 0, 0, 1],
+				# VE.Bus high temperature
+				'inverterhightempenabled': ['/Settings/Generator0/InverterHighTemp/Enabled', 0, 0, 1],
+				'inverterhightempstarttimer': ['/Settings/Generator0/InverterHighTemp/StartTimer', 20, 0, 10000],
+				'inverterhightempstoptimer': ['/Settings/Generator0/InverterHighTemp/StopTimer', 20, 0, 10000],
+				# VE.Bus overload
+				'inverteroverloadenabled': ['/Settings/Generator0/InverterOverload/Enabled', 0, 0, 1],
+				'inverteroverloadstarttimer': ['/Settings/Generator0/InverterOverload/StartTimer', 20, 0, 10000],
+				'inverteroverloadstoptimer': ['/Settings/Generator0/InverterOverload/StopTimer', 20, 0, 10000],
 				# TestRun
 				'testrunenabled': ['/Settings/Generator0/TestRun/Enabled', 0, 0, 1],
 				'testrunstartdate': ['/Settings/Generator0/TestRun/StartDate', time.time(), 0, 10000000000.1],
@@ -303,7 +338,7 @@ class DbusGenerator:
 	def _evaluate_startstop_conditions(self):
 
 		# Conditions will be evaluated in this order
-		conditions = ['soc', 'acload', 'batterycurrent', 'batteryvoltage']
+		conditions = ['soc', 'acload', 'batterycurrent', 'batteryvoltage', 'inverterhightemp', 'inverteroverload']
 		start = False
 		runningbycondition = None
 		today = calendar.timegm(datetime.date.today().timetuple())
@@ -379,8 +414,8 @@ class DbusGenerator:
 	def _evaluate_condition(self, condition, value):
 		name = condition['name']
 		setting = ('qh_' if self._dbusservice['/QuietHours'] == 1 else '') + name
-		startvalue = self._settings[setting + 'start']
-		stopvalue = self._settings[setting + 'stop']
+		startvalue = self._settings[setting + 'start'] if not condition['boolean'] else 1
+		stopvalue = self._settings[setting + 'stop'] if not condition['boolean'] else 0
 
 		# Check if the condition has to be evaluated
 		if not self._check_condition(condition, value):
@@ -569,6 +604,10 @@ class DbusGenerator:
 							   if self._battery_measurement_current_import else None),
 			'soc': self._battery_measurement_soc_import.get_value() if self._battery_measurement_soc_import else None,
 			'acload': self._dbusmonitor.get_value('com.victronenergy.system', '/Ac/Consumption/Total/Power'),
+			'inverterhightemp': (self._vebusservice_high_temperature_import.get_value()
+								 if self._vebusservice_high_temperature_import else None),
+			'inverteroverload': (self._vebusservice_overload_import.get_value()
+								 if self._vebusservice_overload_import else None)
 		}
 
 		if values['acload']:
@@ -580,20 +619,15 @@ class DbusGenerator:
 		return values
 
 	def _determineservices(self):
-		# batterymeasurement is either 'default' or 'com_victronenergy_battery_288/Dc/0'. 
+		# batterymeasurement is either 'default' or 'com_victronenergy_battery_288/Dc/0'.
 		# In case it is set to default, we use the AutoSelected battery measurement, given by
 		# SystemCalc.
 
 		batterymeasurement = None
-		newservice = ''
-
-		if self._battery_measurement_voltage_import:
-			oldservice = self._battery_measurement_current_import.serviceName + self._battery_measurement_voltage_import.path
-		else:
-			oldservice = None
+		vebusservice = None
 
 		if self._settings['batterymeasurement'] == 'default':
-			batterymeasurement = self._dbusmonitor.get_value('com.victronenergy.system','/AutoSelectedBatteryMeasurement')
+			batterymeasurement = self._dbusmonitor.get_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement')
 		elif len(self._settings['batterymeasurement'].split("/", 1)) == 2:  # Only very basic sanity checking..
 			batterymeasurement = self._settings['batterymeasurement']
 		elif self._settings['batterymeasurement'] == 'nobattery':
@@ -601,6 +635,14 @@ class DbusGenerator:
 		else:
 			# Exception: unexpected value for batterymeasurement
 			pass
+
+		batteryprefix = "/" + batterymeasurement.split("/", 1)[1]
+
+		# Get the current battery servicename
+		if self._battery_measurement_voltage_import:
+			oldservice = self._battery_measurement_voltage_import.serviceName + batteryprefix
+		else:
+			oldservice = None
 
 		if batterymeasurement:
 			batteryservicename = VeDbusItemImport(
@@ -610,35 +652,67 @@ class DbusGenerator:
 				eventCallback=None,
 				createsignal=False)
 
-		if batterymeasurement and batteryservicename.get_value():
-			prefix = "/" + batterymeasurement.split("/", 1)[1]
+			if batteryprefix and batteryservicename.get_value():
+				newbatteryservice = batteryservicename.get_value() + batteryprefix
+			else:
+				newbatteryservice = None
 
+		if batteryservicename.get_value() and oldservice != newbatteryservice:
+			self._battery_measurement_available = True
+
+			logger.info('Battery service we need (%s) found! Using it for generator start/stop'
+						% self._settings['batterymeasurement'].split("/")[0])
 			self._battery_measurement_voltage_import = VeDbusItemImport(
-				bus=self._bus, serviceName=batteryservicename.get_value(), path=prefix + '/Voltage', eventCallback=None, createsignal=True)
+				bus=self._bus, serviceName=batteryservicename.get_value(),
+				path=batteryprefix + '/Voltage', eventCallback=None, createsignal=True)
 
 			self._battery_measurement_current_import = VeDbusItemImport(
-				bus=self._bus, serviceName=batteryservicename.get_value(), path=prefix + '/Current', eventCallback=None, createsignal=True)
+				bus=self._bus, serviceName=batteryservicename.get_value(),
+				path=batteryprefix + '/Current', eventCallback=None, createsignal=True)
 
-			# Exception caused by Matthijs :), we forgot to prefix the Soc during the big path-change...
+			# Exception caused by Matthijs :), we forgot to batteryprefix the Soc during the big path-change...
 			self._battery_measurement_soc_import = VeDbusItemImport(
-				bus=self._bus, serviceName=batteryservicename.get_value(), path='/Soc', eventCallback=None, createsignal=True)
+				bus=self._bus, serviceName=batteryservicename.get_value(),
+				path='/Soc', eventCallback=None, createsignal=True)
 
-			newservice = self._battery_measurement_current_import.serviceName + self._battery_measurement_voltage_import.path
-		else:
+		elif batteryservicename.get_value() is None and self._battery_measurement_available:
 			self._battery_measurement_voltage_import = None
 			self._battery_measurement_current_import = None
 			self._battery_measurement_soc_import = None
-
-		if batterymeasurement and batteryservicename.get_value():
-			self._battery_measurement_available = True
-			if oldservice != newservice:
-				logger.info('Battery service we need (%s) found! Using it for generator start/stop'
-					% self._settings['batterymeasurement'].split("/")[0])
-
-		elif self._battery_measurement_available:
 			logger.info('Battery service we need (%s) is not available! Stop evaluating related conditions'
-					% self._settings['batterymeasurement'].split("/")[0])
+						% self._settings['batterymeasurement'].split("/")[0])
 			self._battery_measurement_available = False
+
+		# Get the default VE.Bus service and import high temperature and overload warnings
+		vebusservice = VeDbusItemImport(
+				bus=self._bus,
+				serviceName="com.victronenergy.system",
+				path='/VebusService',
+				eventCallback=None,
+				createsignal=False)
+
+		if vebusservice.get_value() and (vebusservice.get_value() != self._vebusservice
+										 or not self._vebusservice_available):
+			self._vebusservice = vebusservice.get_value()
+			self._vebusservice_available = True
+
+			logger.info('Vebus service (%s) found! Using it for generator start/stop'
+						% vebusservice.get_value())
+
+			self._vebusservice_high_temperature_import = VeDbusItemImport(
+					bus=self._bus, serviceName=vebusservice.get_value(),
+					path='/Alarms/HighTemperature', eventCallback=None, createsignal=True)
+
+			self._vebusservice_overload_import = VeDbusItemImport(
+					bus=self._bus, serviceName=vebusservice.get_value(),
+					path='/Alarms/Overload', eventCallback=None, createsignal=True)
+
+		elif not vebusservice.get_value() and self._vebusservice_available:
+			logger.info('Vebus service (%s) dissapeared! Stop evaluating related conditions'
+						% self._vebusservice)
+			self._vebusservice_available = False
+			self._vebusservice_high_temperature_import = None
+			self._vebusservice_overload_import = None
 
 		# Trigger an immediate check of system status
 		self._changed = True
