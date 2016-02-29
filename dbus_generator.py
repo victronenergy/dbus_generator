@@ -216,6 +216,7 @@ class DbusGenerator:
 
 		self._evaluate_if_we_are_needed()
 		gobject.timeout_add(1000, self._handletimertick)
+		self._update_relay()
 		self._changed = True
 
 	def _evaluate_if_we_are_needed(self):
