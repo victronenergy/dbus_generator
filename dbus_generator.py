@@ -42,6 +42,8 @@ class DbusGenerator:
 		self._bus = dbus.SystemBus() if (platform.machine() == 'armv7l') else dbus.SessionBus()
 		self.RELAY_GPIO_FILE = '/sys/class/gpio/gpio182/value'
 		self.HISTORY_DAYS = 30
+		# Number of retries on error
+		self.RETRIES_ON_ERROR = 300
 		self._last_counters_check = 0
 		self._dbusservice = None
 		self._starttime = 0
@@ -66,7 +68,8 @@ class DbusGenerator:
 				'start_timer': 0,
 				'stop_timer': 0,
 				'valid': True,
-				'enabled': False
+				'enabled': False,
+				'retries': 0
 			},
 			'batterycurrent': {
 				'name': 'batterycurrent',
@@ -76,7 +79,8 @@ class DbusGenerator:
 				'start_timer': 0,
 				'stop_timer': 0,
 				'valid': True,
-				'enabled': False
+				'enabled': False,
+				'retries': 0
 			},
 			'acload': {
 				'name': 'acload',
@@ -86,7 +90,8 @@ class DbusGenerator:
 				'start_timer': 0,
 				'stop_timer': 0,
 				'valid': True,
-				'enabled': False
+				'enabled': False,
+				'retries': 0
 			},
 			'inverterhightemp': {
 				'name': 'inverterhightemp',
@@ -96,7 +101,8 @@ class DbusGenerator:
 				'start_timer': 0,
 				'stop_timer': 0,
 				'valid': True,
-				'enabled': False
+				'enabled': False,
+				'retries': 0
 			},
 			'inverteroverload': {
 				'name': 'inverteroverload',
@@ -106,7 +112,8 @@ class DbusGenerator:
 				'start_timer': 0,
 				'stop_timer': 0,
 				'valid': True,
-				'enabled': False
+				'enabled': False,
+				'retries': 0
 			},
 			'soc': {
 				'name': 'soc',
@@ -114,7 +121,8 @@ class DbusGenerator:
 				'boolean': False,
 				'timed': False,
 				'valid': True,
-				'enabled': False
+				'enabled': False,
+				'retries': 0
 			}
 		}
 
@@ -269,8 +277,7 @@ class DbusGenerator:
 				self._dbusservice.add_path('/ManualStartTimer', value=0, writeable=True)
 				# Silent mode active
 				self._dbusservice.add_path('/QuietHours', value=0)
-
-			self._determineservices()
+				self._determineservices()
 
 		else:
 			if self._dbusservice is not None:
@@ -405,15 +412,21 @@ class DbusGenerator:
 			logger.info('Enabling (%s) condition' % name)
 
 		if value is None and condition['valid']:
-			logger.info('Error getting (%s) value, skipping evaluation till get a valid value' % name)
-			self._reset_condition(condition)
-			condition['valid'] = False
+			if condition['retries'] >= self.RETRIES_ON_ERROR or not condition['reached']:
+				logger.info('Error getting (%s) value, skipping evaluation till get a valid value' % name)
+				self._reset_condition(condition)
+				condition['valid'] = False
+			else:
+				condition['retries'] += 1
+				if condition['retries'] == 1 or (condition['retries'] % 10) == 0:
+					logger.info('Error getting (%s) value, retrying(#%i)' % (name, condition['retries']))
 			return False
 
 		elif value is not None and not condition['valid']:
 			logger.info('Success getting (%s) value, resuming evaluation' % name)
 			condition['valid'] = True
 
+		condition['retries'] = 0
 		return condition['valid']
 
 	def _evaluate_condition(self, condition, value):
@@ -424,6 +437,11 @@ class DbusGenerator:
 
 		# Check if the condition has to be evaluated
 		if not self._check_condition(condition, value):
+			# If generator is started by this condition and value is invalid
+			# wait till RETRIES_ON_ERROR to skip the condition
+			if condition['reached'] and condition['retries'] <= self.RETRIES_ON_ERROR:
+				return True
+
 			return False
 
 		# As this is a generic evaluation method, we need to know how to compare the values
@@ -673,18 +691,24 @@ class DbusGenerator:
 
 			logger.info('Battery service we need (%s) found! Using it for generator start/stop'
 						% batterymeasurement)
-			self._battery_measurement_voltage_import = VeDbusItemImport(
-				bus=self._bus, serviceName=batteryservicename.get_value(),
-				path=batteryprefix + '/Voltage', eventCallback=None, createsignal=True)
+			try:
+				self._battery_measurement_voltage_import = VeDbusItemImport(
+					bus=self._bus, serviceName=batteryservicename.get_value(),
+					path=batteryprefix + '/Voltage', eventCallback=None, createsignal=True)
 
-			self._battery_measurement_current_import = VeDbusItemImport(
-				bus=self._bus, serviceName=batteryservicename.get_value(),
-				path=batteryprefix + '/Current', eventCallback=None, createsignal=True)
+				self._battery_measurement_current_import = VeDbusItemImport(
+					bus=self._bus, serviceName=batteryservicename.get_value(),
+					path=batteryprefix + '/Current', eventCallback=None, createsignal=True)
 
-			# Exception caused by Matthijs :), we forgot to batteryprefix the Soc during the big path-change...
-			self._battery_measurement_soc_import = VeDbusItemImport(
-				bus=self._bus, serviceName=batteryservicename.get_value(),
-				path='/Soc', eventCallback=None, createsignal=True)
+				# Exception caused by Matthijs :), we forgot to batteryprefix the Soc during the big path-change...
+				self._battery_measurement_soc_import = VeDbusItemImport(
+					bus=self._bus, serviceName=batteryservicename.get_value(),
+					path='/Soc', eventCallback=None, createsignal=True)
+			except Exception:
+				logger.debug('Error getting battery service!')
+				self._battery_measurement_voltage_import = None
+				self._battery_measurement_current_import = None
+				self._battery_measurement_soc_import = None
 
 		elif selectedbattery == 'nobattery' and self._battery_measurement_available:
 			logger.info('Battery monitoring disabled! Stop evaluating related conditions')
@@ -716,14 +740,19 @@ class DbusGenerator:
 
 			logger.info('Vebus service (%s) found! Using it for generator start/stop'
 						% vebusservice.get_value())
+			try:
+				self._vebusservice_high_temperature_import = VeDbusItemImport(
+						bus=self._bus, serviceName=vebusservice.get_value(),
+						path='/Alarms/HighTemperature', eventCallback=None, createsignal=True)
 
-			self._vebusservice_high_temperature_import = VeDbusItemImport(
-					bus=self._bus, serviceName=vebusservice.get_value(),
-					path='/Alarms/HighTemperature', eventCallback=None, createsignal=True)
-
-			self._vebusservice_overload_import = VeDbusItemImport(
-					bus=self._bus, serviceName=vebusservice.get_value(),
-					path='/Alarms/Overload', eventCallback=None, createsignal=True)
+				self._vebusservice_overload_import = VeDbusItemImport(
+						bus=self._bus, serviceName=vebusservice.get_value(),
+						path='/Alarms/Overload', eventCallback=None, createsignal=True)
+			except Exception:
+				logger.info('Error getting Vebus service!')
+				self._vebusservice_available = False
+				self._vebusservice_high_temperature_import = None
+				self._vebusservice_overload_import = None
 
 		elif not vebusservice.get_value() and self._vebusservice_available:
 			logger.info('Vebus service (%s) dissapeared! Stop evaluating related conditions'
