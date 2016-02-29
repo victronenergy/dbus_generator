@@ -279,7 +279,10 @@ class TestGenerator(unittest.TestCase):
 		self.set_condition_timed("BatteryCurrent", 14, 10, 0, 0, 1)
 		self.assertEqual(1, self.get_state(5))
 		self.stop_services('battery')
-		self.assertEqual(0, self.get_state(10))
+		# Retry connection mecanism must keep the generator running
+		# for 5 minutres
+		self.assertEqual(1, self.get_state(200))
+		self.assertEqual(0, self.get_state(105))
 		self.start_services('battery')
 		self.set_value(self.batteryservice, '/Dc/0/Current', -15)
 		self.assertEqual(1, self.get_state(10))
@@ -292,7 +295,10 @@ class TestGenerator(unittest.TestCase):
 		self.set_condition_timed("AcLoad", 14, 10, 0, 5, 1)
 		self.assertEqual(1, self.get_state(5))
 		self.stop_services('vebus')
-		self.assertEqual(0, self.get_state(5))
+		# Retry connection mecanism must keep the generator running
+		# for 5 minutres
+		self.assertEqual(1, self.get_state(200))
+		self.assertEqual(0, self.get_state(105))
 		self.start_services('vebus')
 		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
 		self.assertEqual(1, self.get_state(7))
