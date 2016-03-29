@@ -84,6 +84,7 @@ class TestGenerator(unittest.TestCase):
 		self.set_value(self._settingspath, '/Settings/Generator0/MinimumRuntime', 0)
 		self.set_value(self._generatorpath, '/ManualStart', 0)
 		self.set_value(self._generatorpath, '/ManualStartTimer', 0)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/RunTillBatteryFull', 0)
 		self.set_value(self._settingspath, "/Settings/Generator0/AutoStart", 1)
 		time.sleep(2)  # Make sure generator stops
 
@@ -166,6 +167,7 @@ class TestGenerator(unittest.TestCase):
 		setdate = today - (interval * 86400)
 		currenttime = time.time() - time.mktime(datetime.date.today().timetuple())
 
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/RunTillBatteryFull', 0)
 		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Enabled', 1)
 		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/SkipRuntime', 36000)
 		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/StartDate', setdate)
@@ -183,6 +185,23 @@ class TestGenerator(unittest.TestCase):
 
 		self.assertEqual(1, self.wait_and_get('/SkipTestRun', 2))
 		self.assertEqual(0, self.get_state(0))
+
+		# Check run till battery is full
+		currenttime = time.time() - time.mktime(datetime.date.today().timetuple())
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/StartTime', currenttime)
+		self.set_value(self.batteryservice, '/Soc', 80)
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/RunTillBatteryFull', 1)
+		self.assertEqual(0, self.get_state(5))
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/SkipRuntime', 36000)
+		self.assertEqual(1, self.get_state(5))
+
+		# The start window when run till battery full is 60 seconds
+		# wait and make sure that still running
+		self.assertEqual(1, self.get_state(65))
+
+		# Test run should end when battery is full
+		self.set_value(self.batteryservice, '/Soc', 100)
+		self.assertEqual(0, self.get_state(5))
 
 	def test_quiethours_mode(self):
 
@@ -237,6 +256,9 @@ class TestGenerator(unittest.TestCase):
 
 		self.set_value(self._generatorpath, '/ManualStart', 1)
 
+		self.assertEqual('testrun', self.wait_and_get('/RunningByCondition', stoptimer + 2))
+		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Enabled', 0)
+
 		self.assertEqual('manual', self.wait_and_get('/RunningByCondition', stoptimer + 2))
 		self.set_value(self._generatorpath, '/ManualStart', 0)
 
@@ -252,12 +274,9 @@ class TestGenerator(unittest.TestCase):
 		self.assertEqual('batteryvoltage', self.wait_and_get('/RunningByCondition', stoptimer + 2))
 		self.set_value(self.batteryservice, '/Dc/0/Voltage', 24)
 
-		self.assertEqual('testrun', self.wait_and_get('/RunningByCondition', stoptimer + 2))
 		self.assertGreaterEqual(self.get_value(self._generatorpath, '/Runtime'), 11)
 
-		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Enabled', 0)
-
-		self.assertEqual(0,  self.get_state(2))
+		self.assertEqual(0,  self.get_state(stoptimer + 2))
 
 	def test_remove_battery_service(self):
 		self.set_value(self.batteryservice, '/Dc/0/Current', -15)

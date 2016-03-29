@@ -42,14 +42,15 @@ class DbusGenerator:
 		self._bus = dbus.SystemBus() if (platform.machine() == 'armv7l') else dbus.SessionBus()
 		self.RELAY_GPIO_FILE = '/sys/class/gpio/gpio182/value'
 		self.HISTORY_DAYS = 30
-		# Number of retries on error
+		# One second per retry if the generator is started, undefined if not.
 		self.RETRIES_ON_ERROR = 300
+		self._testrun_soc_retries = 0
 		self._last_counters_check = 0
 		self._dbusservice = None
 		self._starttime = 0
 		self._manualstarttimer = 0
 		self._last_runtime_update = 0
-		self.timer_runnning = 0
+		self._timer_runnning = 0
 		self._battery_measurement_voltage_import = None
 		self._battery_measurement_current_import = None
 		self._battery_measurement_soc_import = None
@@ -211,7 +212,8 @@ class DbusGenerator:
 				'testrunstarttimer': ['/Settings/Generator0/TestRun/StartTime', 54000, 0, 86400],
 				'testruninterval': ['/Settings/Generator0/TestRun/Interval', 28, 1, 365],
 				'testrunruntime': ['/Settings/Generator0/TestRun/Duration', 7200, 1, 86400],
-				'testrunskipruntime': ['/Settings/Generator0/TestRun/SkipRuntime', 0, 0, 100000]
+				'testrunskipruntime': ['/Settings/Generator0/TestRun/SkipRuntime', 0, 0, 100000],
+				'testruntillbatteryfull': ['/Settings/Generator0/TestRun/RunTillBatteryFull', 0, 0, 1]
 			},
 			eventCallback=self._handle_changed_setting)
 
@@ -308,6 +310,9 @@ class DbusGenerator:
 	def _handle_changed_setting(self, setting, oldvalue, newvalue):
 		self._changed = True
 		self._evaluate_if_we_are_needed()
+		if setting == 'batterymeasurement':
+			self._determineservices()
+
 		if setting == 'autostart':
 				logger.info('Autostart function %s.' % ('enabled' if newvalue == 1 else 'disabled'))
 		if self._dbusservice is not None and setting == 'testruninterval':
@@ -351,7 +356,7 @@ class DbusGenerator:
 		start = False
 		runningbycondition = None
 		today = calendar.timegm(datetime.date.today().timetuple())
-		self.timer_runnning = False
+		self._timer_runnning = False
 		values = self._get_updated_values()
 
 		self._check_quiet_hours()
@@ -375,14 +380,15 @@ class DbusGenerator:
 
 		# Autostart conditions will only be evaluated if the autostart functionality is enabled
 		if self._settings['autostart'] == 1:
+
+			if self._evaluate_testrun_condition():
+				runningbycondition = 'testrun'
+				start = True
+
 			# Evaluate value conditions
 			for condition in conditions:
 				start = self._evaluate_condition(self._condition_stack[condition], values[condition]) or start
 				runningbycondition = condition if start and runningbycondition is None else runningbycondition
-
-			if self._evaluate_testrun_condition() and not start:
-				runningbycondition = 'testrun'
-				start = True
 
 		if start:
 			self._start_generator(runningbycondition)
@@ -458,7 +464,7 @@ class DbusGenerator:
 				condition['start_timer'] += time.time() if condition['start_timer'] == 0 else 0
 				start = time.time() - condition['start_timer'] >= self._settings[name + 'starttimer']
 				condition['stop_timer'] *= int(not start)
-				self.timer_runnning = True
+				self._timer_runnning = True
 			else:
 				condition['start_timer'] = 0
 
@@ -466,7 +472,7 @@ class DbusGenerator:
 				condition['stop_timer'] += time.time() if condition['stop_timer'] == 0 else 0
 				stop = time.time() - condition['stop_timer'] >= self._settings[name + 'stoptimer']
 				condition['stop_timer'] *= int(not stop)
-				self.timer_runnning = True
+				self._timer_runnning = True
 			else:
 				condition['stop_timer'] = 0
 
@@ -502,6 +508,10 @@ class DbusGenerator:
 			return False
 
 		today = datetime.date.today()
+		runtillbatteryfull = self._settings['testruntillbatteryfull'] == 1
+		soc = self._get_updated_values()['soc']
+		batteryisfull = runtillbatteryfull and soc == 100
+
 		try:
 			startdate = datetime.date.fromtimestamp(self._settings['testrunstartdate'])
 			starttime = time.mktime(today.timetuple()) + self._settings['testrunstarttimer']
@@ -518,14 +528,31 @@ class DbusGenerator:
 		# If the accumulated runtime during the tes trun interval is greater than '/TestRunIntervalRuntime'
 		# the tes trun must be skipped
 		needed = (self._settings['testrunskipruntime'] > self._dbusservice['/TestRunIntervalRuntime']
-				  or self._settings['testrunskipruntime'] == 0)
+					  or self._settings['testrunskipruntime'] == 0)
 		self._dbusservice['/SkipTestRun'] = int(not needed)
 
 		interval = self._settings['testruninterval']
-		stoptime = starttime + self._settings['testrunruntime']
+		stoptime = (starttime + self._settings['testrunruntime']) if not runtillbatteryfull else (starttime + 60)
 		elapseddays = (today - startdate).days
 		mod = elapseddays % interval
+
 		start = (not bool(mod) and (time.time() >= starttime) and (time.time() <= stoptime))
+
+		if runtillbatteryfull:
+			if soc is not None:
+				self._testrun_soc_retries = 0
+				start = (start or self._dbusservice['/RunningByCondition'] == 'testrun') and not batteryisfull
+			elif self._dbusservice['/RunningByCondition'] == 'testrun':
+				if self._testrun_soc_retries < self.RETRIES_ON_ERROR:
+					self._testrun_soc_retries += 1
+					start = True
+					if (self._testrun_soc_retries % 10) == 0:
+						logger.info('Test run failed to get SOC value, retrying(#%i)' % self._testrun_soc_retries)
+				else:
+					logger.info('Failed to get SOC after %i retries, terminating test run condition' % self._testrun_soc_retries)
+					start = False
+			else:
+				start = False
 
 		if not bool(mod) and (time.time() <= stoptime):
 			self._dbusservice['/NextTestRun'] = starttime
