@@ -197,7 +197,6 @@ class DbusGenerator:
 				'acloadstoptimer': ['/Settings/Generator0/AcLoad/StopTimer', 20, 0, 10000],
 				'qh_acloadstart': ['/Settings/Generator0/AcLoad/QuietHoursStartValue', 1900, 0, 100000],
 				'qh_acloadstop': ['/Settings/Generator0/AcLoad/QuietHoursStopValue', 1200, 0, 100000],
-				'couplepvpower': ['/Settings/Generator0/AcLoad/CouplePvPower', 0, 0, 1],
 				# VE.Bus high temperature
 				'inverterhightempenabled': ['/Settings/Generator0/InverterHighTemp/Enabled', 0, 0, 1],
 				'inverterhightempstarttimer': ['/Settings/Generator0/InverterHighTemp/StartTimer', 20, 0, 10000],
@@ -604,21 +603,6 @@ class DbusGenerator:
 		return summ
 
 	def _get_updated_values(self):
-		pvongenset = self._dbusmonitor.get_value('com.victronenergy.system', '/Ac/PvOnGenset/Total/Power')
-		pvongrid = self._dbusmonitor.get_value('com.victronenergy.system', '/Ac/PvOnGrid/Total/Power')
-		pvonoutput = self._dbusmonitor.get_value('com.victronenergy.system', '/Ac/PvOnOutput/Total/Power')
-		pvondc = self._dbusmonitor.get_value('com.victronenergy.system', '/Dc/Pv/Power')
-		totalpvpower = 0
-
-		if self._settings['couplepvpower']:
-			if pvongenset:
-				totalpvpower += pvongenset
-			if pvongrid:
-				totalpvpower += pvongrid
-			if pvonoutput:
-				totalpvpower += pvonoutput
-			if pvondc:
-				totalpvpower += pvondc
 
 		values = {
 			'batteryvoltage': (self._battery_measurement_voltage_import.get_value()
@@ -632,9 +616,6 @@ class DbusGenerator:
 			'inverteroverload': (self._vebusservice_overload_import.get_value()
 								 if self._vebusservice_overload_import else None)
 		}
-
-		if values['acload']:
-			values['acload'] -= totalpvpower
 
 		if values['batterycurrent']:
 			values['batterycurrent'] *= -1

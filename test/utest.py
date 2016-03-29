@@ -156,21 +156,6 @@ class TestGenerator(unittest.TestCase):
 		self.assertEqual(1, self.get_state(1))
 		self.assertEqual(0, self.get_state(randomtimer + 3))
 
-	def test_ac_solar_coupled(self):
-		self.set_value(self._settingspath, '/Settings/Generator0/AcLoad/CouplePvPower', 1)
-		self.set_condition_timed("AcLoad", 1600, 800, 5, 5, 0, False)
-		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 1700)
-		self.set_condition_timed("AcLoad", 1600, 800, 5, 5, 1, False)
-		self.assertEqual(1, self.get_state(7))
-		self.set_value(self.pvinverterservice, '/Ac/L1/Power', 1000)
-		self.assertEqual(0, self.get_state(7))
-		self.set_value(self.pvinverterservice, '/Ac/L1/Power', 0)
-		self.assertEqual(1, self.get_state(7))
-		self.set_value(self.solarchergerservice, '/Dc/0/Current', 90)
-		self.assertEqual(0, self.get_state(7))
-		self.set_value(self.solarchergerservice, '/Dc/0/Current', 0)
-		self.assertEqual(1, self.get_state(7))
-
 	def test_testrun(self):
 		# The random generated history is set to a maximum of one hour per day, setting the testrun
 		# accumulated time to 10h and the interval to a maximum of 9 days makes sure that the maintenace
