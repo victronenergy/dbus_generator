@@ -30,6 +30,7 @@ class TestGenerator(unittest.TestCase):
 		self.solarchergerservice = 'com.victronenergy.solarcharger.tty33'
 		self.pvinverterservice = 'com.victronenergy.pvinverter.test'
 		self.set_value(self._settingspath, "/Settings/Relay/Function", 1)
+		self.retriesonerror = 300
 		self.fill_history()
 		self.set_value(self._settingspath, "/Settings/Generator0/BatteryService", "com_victronenergy_battery_223/Dc/0")
 		self.firstRun = False
@@ -78,14 +79,15 @@ class TestGenerator(unittest.TestCase):
 		self.set_condition_timed("BatteryCurrent", 0, 0, 0, 0, 0)
 		self.set_condition_timed("BatteryVoltage", 0, 0, 0, 0, 0)
 		self.set_condition_timed("AcLoad", 0, 0, 0, 0, 0)
-		self.set_value(self._settingspath, '/Settings/Generator0/AcLoad/CouplePvPower', 0)
 		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Enabled', 0)
 		self.set_value(self._settingspath, '/Settings/Generator0/QuietHours/Enabled', 0)
 		self.set_value(self._settingspath, '/Settings/Generator0/MinimumRuntime', 0)
 		self.set_value(self._generatorpath, '/ManualStart', 0)
 		self.set_value(self._generatorpath, '/ManualStartTimer', 0)
 		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/RunTillBatteryFull', 0)
-		self.set_value(self._settingspath, "/Settings/Generator0/AutoStart", 1)
+		self.set_value(self._settingspath, "/Settings/Generator0/AutoStartEnabled", 1)
+		self.set_value(self._settingspath, '/Settings/Generator0/OnLossCommunication', 0)
+
 		time.sleep(2)  # Make sure generator stops
 
 	def fill_history(self):
@@ -195,6 +197,12 @@ class TestGenerator(unittest.TestCase):
 		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/SkipRuntime', 36000)
 		self.assertEqual(1, self.get_state(5))
 
+		# Remove battery, rerty mechanism must keep the generator 
+		# running
+		self.stop_services('battery')
+		self.assertEqual(1, self.get_state(self.retriesonerror / 2))
+		self.start_services('battery')
+
 		# The start window when run till battery full is 60 seconds
 		# wait and make sure that still running
 		self.assertEqual(1, self.get_state(65))
@@ -285,13 +293,30 @@ class TestGenerator(unittest.TestCase):
 		self.stop_services('battery')
 		# Retry connection mecanism must keep the generator running
 		# for 5 minutres
-		self.assertEqual(1, self.get_state(200))
-		self.assertEqual(0, self.get_state(105))
+		self.assertEqual(1, self.get_state(self.retriesonerror / 2))
+		self.assertEqual(0, self.get_state(self.retriesonerror / 2 + 10))
 		self.start_services('battery')
 		self.set_value(self.batteryservice, '/Dc/0/Current', -15)
 		self.assertEqual(1, self.get_state(10))
 
+	def test_remove_battery_service_keeprunning(self):
+		self.set_value(self._settingspath, '/Settings/Generator0/OnLossCommunication', 2)
+		self.set_value(self.batteryservice, '/Dc/0/Current', -15)
+		self.set_condition_timed("BatteryCurrent", 14, 10, 0, 0, 1)
+		self.assertEqual(1, self.get_state(5))
+		self.stop_services('battery')
+		# Retry connection mecanism must keep the generator running
+		# for 5 minutres
+		self.assertEqual(1, self.get_state(self.retriesonerror / 2))
+		self.assertEqual(1, self.get_state(self.retriesonerror / 2 + 10))
+		self.assertEqual('lossofcommunication', self.wait_and_get('/RunningByCondition', 1))
+		self.start_services('battery')
+		self.set_value(self.batteryservice, '/Dc/0/Current', -15)
+		self.assertEqual(1, self.get_state(10))
+		self.assertEqual('batterycurrent', self.wait_and_get('/RunningByCondition', 1))
+
 	def test_remove_vebus_service(self):
+		self.set_value(self._settingspath, '/Settings/Generator0/OnLossCommunication', 0)
 		self.stop_services('vebus')
 		self.start_services('vebus')
 		time.sleep(5)
@@ -300,18 +325,51 @@ class TestGenerator(unittest.TestCase):
 		self.assertEqual(1, self.get_state(5))
 		self.stop_services('vebus')
 		# Retry connection mecanism must keep the generator running
-		# for 5 minutres
-		self.assertEqual(1, self.get_state(200))
-		self.assertEqual(0, self.get_state(105))
+		# for 'retriesonerror' seconds
+		self.assertEqual(1, self.get_state(self.retriesonerror / 2))
+		self.assertEqual(0, self.get_state(self.retriesonerror / 2 + 10))
 		self.start_services('vebus')
 		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
 		self.assertEqual(1, self.get_state(7))
+
+	def test_autostart_oncomfailure(self):
+		self.stop_services('vebus')
+		self.start_services('vebus')
+		# Enable acload condition otherwise communications are not checked
+		self.set_condition_timed("AcLoad", 140, 10, 1500, 0, 1)
+		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
+		self.set_value(self._settingspath, '/Settings/Generator0/OnLossCommunication', 1)
+		self.stop_services('vebus')
+		self.assertEqual(1, self.get_state(self.retriesonerror + 10))
+		self.start_services('vebus')
+
+	def test_keeprunning_oncomfailure(self):
+		self.set_value(self._settingspath, '/Settings/Generator0/OnLossCommunication', 2)
+
+		self.stop_services('vebus')
+		# Generator not running must expect the same after connection lost
+		self.assertEqual(0, self.get_state(self.retriesonerror + 5))
+
+		self.start_services('vebus')
+		time.sleep(5)
+		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
+		self.set_condition_timed("AcLoad", 14, 10, 0, 5, 1)
+		self.assertEqual(1, self.get_state(5))
+		self.stop_services('vebus')
+		# Generator is running and should keep running after communications error
+		self.assertEqual(1, self.get_state(self.retriesonerror / 2))
+		self.assertEqual(1, self.get_state(self.retriesonerror / 2 + 5))
+		self.assertEqual('lossofcommunication', self.wait_and_get('/RunningByCondition', 1))
+		self.start_services('vebus')
+		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
+		self.assertEqual(1, self.get_state(1))
+		self.assertEqual('acload', self.wait_and_get('/RunningByCondition', 1))
 
 	def test_disable_autostart(self):
 		self.set_condition("Soc", 80, 85, 1)
 		self.set_value(self.batteryservice, '/Soc', 80)
 		self.assertEqual(1, self.get_state(5))
-		self.set_value(self._settingspath, "/Settings/Generator0/AutoStart", 0)
+		self.set_value(self._settingspath, "/Settings/Generator0/AutoStartEnabled", 0)
 		self.assertEqual(0, self.get_state(5))
 		# When autostart is off the generator manual start should continue working
 		self.set_value(self._generatorpath, '/ManualStart', 1)

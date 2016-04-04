@@ -42,7 +42,7 @@ class DbusGenerator:
 		self._bus = dbus.SystemBus() if (platform.machine() == 'armv7l') else dbus.SessionBus()
 		self.RELAY_GPIO_FILE = '/sys/class/gpio/gpio182/value'
 		self.HISTORY_DAYS = 30
-		# One second per retry if the generator is started, undefined if not.
+		# One second per retry
 		self.RETRIES_ON_ERROR = 300
 		self._testrun_soc_retries = 0
 		self._last_counters_check = 0
@@ -70,7 +70,8 @@ class DbusGenerator:
 				'stop_timer': 0,
 				'valid': True,
 				'enabled': False,
-				'retries': 0
+				'retries': 0,
+				'monitoring': 'battery'
 			},
 			'batterycurrent': {
 				'name': 'batterycurrent',
@@ -81,7 +82,8 @@ class DbusGenerator:
 				'stop_timer': 0,
 				'valid': True,
 				'enabled': False,
-				'retries': 0
+				'retries': 0,
+				'monitoring': 'battery'
 			},
 			'acload': {
 				'name': 'acload',
@@ -92,7 +94,8 @@ class DbusGenerator:
 				'stop_timer': 0,
 				'valid': True,
 				'enabled': False,
-				'retries': 0
+				'retries': 0,
+				'monitoring': 'vebus'
 			},
 			'inverterhightemp': {
 				'name': 'inverterhightemp',
@@ -103,7 +106,7 @@ class DbusGenerator:
 				'stop_timer': 0,
 				'valid': True,
 				'enabled': False,
-				'retries': 0
+				'monitoring': 'vebus'
 			},
 			'inverteroverload': {
 				'name': 'inverteroverload',
@@ -114,7 +117,8 @@ class DbusGenerator:
 				'stop_timer': 0,
 				'valid': True,
 				'enabled': False,
-				'retries': 0
+				'retries': 0,
+				'monitoring': 'vebus'
 			},
 			'soc': {
 				'name': 'soc',
@@ -123,7 +127,8 @@ class DbusGenerator:
 				'timed': False,
 				'valid': True,
 				'enabled': False,
-				'retries': 0
+				'retries': 0,
+				'monitoring': 'battery'
 			}
 		}
 
@@ -164,6 +169,8 @@ class DbusGenerator:
 				'accumulatedtotal': ['/Settings/Generator0/AccumulatedTotal', 0, 0, 0],
 				'batterymeasurement': ['/Settings/Generator0/BatteryService', "default", 0, 0],
 				'minimumruntime': ['/Settings/Generator0/MinimumRuntime', 0, 0, 86400],  # minutes
+				# On permanent loss of communication: 0 = Stop, 1 = Start, 2 = keep running
+				'onlosscommunication': ['/Settings/Generator0/OnLossCommunication', 0, 0, 2],
 				# Quiet hours
 				'quiethoursenabled': ['/Settings/Generator0/QuietHours/Enabled', 0, 0, 1],
 				'quiethoursstarttime': ['/Settings/Generator0/QuietHours/StartTime', 75600, 0, 86400],
@@ -293,9 +300,11 @@ class DbusGenerator:
 
 	def _device_added(self, dbusservicename, instance):
 		self._evaluate_if_we_are_needed()
+		self._determineservices()
 
 	def _device_removed(self, dbusservicename, instance):
 		self._evaluate_if_we_are_needed()
+		self._determineservices()
 
 	def _dbus_value_changed(self, dbusServiceName, dbusPath, options, changes, deviceInstance):
 		if dbusPath == '/AutoSelectedBatteryMeasurement' and self._settings['batterymeasurement'] == 'default':
@@ -312,6 +321,11 @@ class DbusGenerator:
 		self._evaluate_if_we_are_needed()
 		if setting == 'batterymeasurement':
 			self._determineservices()
+			# Reset retries and valid if service changes
+			for condition in self._condition_stack:
+				if self._condition_stack[condition]['monitoring'] == 'battery':
+					self._condition_stack[condition]['valid'] = True
+					self._condition_stack[condition]['retries'] = 0
 
 		if setting == 'autostart':
 				logger.info('Autostart function %s.' % ('enabled' if newvalue == 1 else 'disabled'))
@@ -358,6 +372,7 @@ class DbusGenerator:
 		today = calendar.timegm(datetime.date.today().timetuple())
 		self._timer_runnning = False
 		values = self._get_updated_values()
+		connection_lost = False
 
 		self._check_quiet_hours()
 
@@ -389,6 +404,22 @@ class DbusGenerator:
 			for condition in conditions:
 				start = self._evaluate_condition(self._condition_stack[condition], values[condition]) or start
 				runningbycondition = condition if start and runningbycondition is None else runningbycondition
+				# Connection lost is set to true if the numbear of retries of one or more enabled conditions
+				# >= RETRIES_ON_ERROR
+				if self._condition_stack[condition]['enabled']:
+					connection_lost = self._condition_stack[condition]['retries'] >= self.RETRIES_ON_ERROR
+
+			# If none condition is reached check if connection is lost and start/keep running the generator
+			# depending on '/OnLossCommunication' setting
+			if not start:
+				# Start always
+				if connection_lost and self._settings['onlosscommunication'] == 1:
+					start = True
+					runningbycondition = 'lossofcommunication'
+				# Keep running if generator already started
+				if self._dbusservice['/State'] == 1 and self._settings['onlosscommunication'] == 2:
+					start = True
+					runningbycondition = 'lossofcommunication'
 
 		if start:
 			self._start_generator(runningbycondition)
@@ -409,6 +440,8 @@ class DbusGenerator:
 			if condition['enabled']:
 				condition['enabled'] = False
 				logger.info('Disabling (%s) condition' % name)
+				condition['retries'] = 0
+				condition['valid'] = True
 				self._reset_condition(condition)
 			return False
 
@@ -416,10 +449,14 @@ class DbusGenerator:
 			condition['enabled'] = True
 			logger.info('Enabling (%s) condition' % name)
 
+		if (condition['monitoring'] == 'battery') and (self._settings['batterymeasurement'] == 'nobattery'):
+			return False
+
 		if value is None and condition['valid']:
-			if condition['retries'] >= self.RETRIES_ON_ERROR or not condition['reached']:
+			if condition['retries'] >= self.RETRIES_ON_ERROR:
 				logger.info('Error getting (%s) value, skipping evaluation till get a valid value' % name)
 				self._reset_condition(condition)
+				self._comunnication_lost = True
 				condition['valid'] = False
 			else:
 				condition['retries'] += 1
@@ -430,8 +467,12 @@ class DbusGenerator:
 		elif value is not None and not condition['valid']:
 			logger.info('Success getting (%s) value, resuming evaluation' % name)
 			condition['valid'] = True
+			condition['retries'] = 0
 
-		condition['retries'] = 0
+		# Reset retries if value is valid
+		if value is not None:
+			condition['retries'] = 0
+
 		return condition['valid']
 
 	def _evaluate_condition(self, condition, value):
@@ -694,7 +735,7 @@ class DbusGenerator:
 			else:
 				newbatteryservice = None
 
-		if batteryservicename and batteryservicename.get_value() and oldservice != newbatteryservice:
+		if batteryservicename and batteryservicename.get_value():
 			self._battery_measurement_available = True
 
 			logger.info('Battery service we need (%s) found! Using it for generator start/stop'
