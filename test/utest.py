@@ -22,7 +22,7 @@ class TestGenerator(unittest.TestCase):
 		self.start_services('pvinverter')
 		self.start_services('solarcharger')
 
-		self.bus = dbus.SystemBus() if (platform.machine() == 'armv7l') else dbus.SessionBus()
+		self.bus = dbus.SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else dbus.SystemBus()
 		self._settingspath = 'com.victronenergy.settings'
 		self._generatorpath = 'com.victronenergy.generator.startstop0'
 		self.batteryservice = 'com.victronenergy.battery.tty22'
