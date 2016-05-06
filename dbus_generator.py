@@ -411,9 +411,9 @@ class DbusGenerator:
 
 			# If none condition is reached check if connection is lost and start/keep running the generator
 			# depending on '/OnLossCommunication' setting
-			if not start:
+			if not start and connection_lost:
 				# Start always
-				if connection_lost and self._settings['onlosscommunication'] == 1:
+				if self._settings['onlosscommunication'] == 1:
 					start = True
 					runningbycondition = 'lossofcommunication'
 				# Keep running if generator already started

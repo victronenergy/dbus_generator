@@ -364,6 +364,8 @@ class TestGenerator(unittest.TestCase):
 		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
 		self.assertEqual(1, self.get_state(1))
 		self.assertEqual('acload', self.wait_and_get('/RunningByCondition', 1))
+		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 0)
+		self.assertEqual(0, self.get_state(10))
 
 	def test_disable_autostart(self):
 		self.set_condition("Soc", 80, 85, 1)
