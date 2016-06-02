@@ -3,7 +3,6 @@
 from dbus.mainloop.glib import DBusGMainLoop
 import gobject
 import argparse
-import logging
 import sys
 import os
 
@@ -22,8 +21,8 @@ parser.add_argument("-n", "--name", help="the D-Bus service you want me to claim
 
 args = parser.parse_args()
 
-print(__file__ + " is starting up, use -h argument to see optional arguments")
 logger = setup_logging(debug=True)
+logger.info(__file__ + " is starting up, use -h argument to see optional arguments")
 
 # Have a mainloop, so we can send/receive asynchronous calls to and from dbus
 DBusGMainLoop(set_as_default=True)
@@ -34,7 +33,7 @@ s = DbusDummyService(
     paths={
         '/Dc/0/Voltage': {'initial': 12},
         '/Dc/0/Current': {'initial': 0},
-	    '/Dc/0/Power': {'initial': 290, 'update': 1}	
+	    '/Dc/0/Power': {'initial': 290, 'update': 1}
 },
     productname='Solarcharger',
     connection='VE.Direct port 1')

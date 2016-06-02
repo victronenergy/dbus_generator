@@ -1,0 +1,40 @@
+language: python
+
+python:
+  - "2.7_with_system_site_packages"
+
+before_install:
+  - sudo apt-get update
+  - sudo apt-get install python-gobject-2
+  - sudo apt-get install python-lxml
+  - sudo apt-get install python-tracing
+  - git clone --recursive https://github.com/victronenergy/localsettings
+  - git clone --recursive https://github.com/victronenergy/dbus-systemcalc-py
+
+before_script:
+  # The timezone in the test script must be the same as the timezone of the test environment
+  - echo 'Europe/Amsterdam' | sudo tee /etc/timezone
+  - sudo dpkg-reconfigure --frontend noninteractive tzdata
+  #
+  # Launch a session DBUS and remember the environment
+  - dbus-launch --sh-syntax > ~/dbus_env.sh
+  #
+  # Startup localsettings and wait 5 to let it startup.
+  - sudo mkdir -p /data/conf
+  - sudo chown "$(whoami)" /data/conf
+  # The output of localsettings is not surpressed because Travis kills utest.py
+  # if no output is generated for > 10mins.
+  - . ~/dbus_env.sh && ./localsettings/localsettings.py &
+  - sleep 5
+  #
+  # Startup dbus_systemcalc.py
+  - . ~/dbus_env.sh && ./dbus-systemcalc-py/dbus_systemcalc.py 2>/dev/null >/dev/null & 
+  - sleep 5
+
+script:
+  - cd ./test
+  - . ~/dbus_env.sh && python ./utest.py -v
+
+after_failure:
+  - . ~/dbus_env.sh && qdbus 
+  - . ~/dbus_env.sh && qdbus com.victronenergy.settings

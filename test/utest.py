@@ -3,6 +3,7 @@
 
 import unittest
 import dbus
+from dbus.mainloop.glib import DBusGMainLoop
 import platform
 import random
 import time
@@ -10,8 +11,12 @@ import calendar
 import datetime
 import json
 import sys
-from subprocess import Popen, PIPE
-from os import environ
+import os
+from subprocess import Popen, PIPE, STDOUT
+
+# our own packages
+sys.path.insert(1, os.path.join(os.path.dirname(__file__), '../ext/velib_python'))
+from settingsdevice import SettingsDevice
 
 
 class TestGenerator(unittest.TestCase):
@@ -22,57 +27,148 @@ class TestGenerator(unittest.TestCase):
 		self.start_services('pvinverter')
 		self.start_services('solarcharger')
 
-		self.bus = dbus.SystemBus() if (platform.machine() == 'armv7l') else dbus.SessionBus()
+		self.bus = dbus.SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else dbus.SystemBus()
+
+		settings = {attrs[0] : attrs for attrs in [
+			['/Settings/System/TimeZone', 'Europe/Amsterdam', 0, 0],
+			['/Settings/Relay/Polarity', 0, 0, 1],
+			['/Settings/Relay/Function', 1, 0, 1],
+			['/Settings/Generator0/BatteryService', 'com_victronenergy_battery_223/Dc/0', 0, 0],
+			['/Settings/Generator0/QuietHours/Enabled', 0, 0, 1],
+			['/Settings/Generator0/QuietHours/StartTime', 0, 0, 0],
+			['/Settings/Generator0/QuietHours/EndTime', 0, 0, 0],
+			['/Settings/Generator0/MinimumRuntime', 0, 0, 0],
+			['/Settings/Generator0/TestRun/Enabled', 0, 0, 1],
+			['/Settings/Generator0/TestRun/RunTillBatteryFull', 0, 0, 1],
+			['/Settings/Generator0/TestRun/SkipRuntime', 0, 0, 0],
+			['/Settings/Generator0/TestRun/StartDate', 0, 0, 0],
+			['/Settings/Generator0/TestRun/StartTime', 0, 0, 0],
+			['/Settings/Generator0/TestRun/Interval', 0, 0, 0],
+			['/Settings/Generator0/TestRun/Duration', 0, 0, 0],
+			['/Settings/Generator0/AutoStartEnabled', 1, 0, 1],
+			['/Settings/Generator0/OnLossCommunication', 0, 0, 0],
+			['/Settings/Generator0/AccumulatedDaily', '', 0, 0],
+			['/Settings/Generator0/AccumulatedTotal', 0, 0, 0],
+		]}
+		conditions = ("BatteryCurrent", "BatteryVoltage", "AcLoad")
+		condition_defaults  = {"StartValue": 0, "StopValue": 0, "StartTimer": 0, "StopTimer": 0,
+			"Enabled": 0, "QuitHoursStartValue": 0, "QuitHoursStopValue": 0}
+		for condition in conditions:
+			for setting_suffix, default_value in condition_defaults.iteritems():
+				setting_label = 'gen0' + condition + setting_suffix
+				setting_path = '/Settings/Generator0/' + condition + '/' + setting_suffix
+				settings[setting_label] = [setting_path, default_value, 0, 0]
+
+		self.settings = SettingsDevice(
+			bus=self.bus,
+			supportedSettings=settings,
+			eventCallback=self.handle_changed_setting
+		)
+
+		# dbusgenerator needs to be able to read the timezone setting, so the settings must already by added
+		self.start_services('dbusgenerator')
+
 		self._settingspath = 'com.victronenergy.settings'
 		self._generatorpath = 'com.victronenergy.generator.startstop0'
 		self.batteryservice = 'com.victronenergy.battery.tty22'
 		self.vebusservice = 'com.victronenergy.vebus.tty23'
 		self.solarchergerservice = 'com.victronenergy.solarcharger.tty33'
 		self.pvinverterservice = 'com.victronenergy.pvinverter.test'
-		self.set_value(self._settingspath, "/Settings/Relay/Function", 1)
+
 		self.retriesonerror = 300
+
+		self.set_value(self._settingspath, "/Settings/Relay/Function", 1)
 		self.fill_history()
-		self.set_value(self._settingspath, "/Settings/Generator0/BatteryService", "com_victronenergy_battery_223/Dc/0")
 		self.firstRun = False
 		self.reset_all_conditons()
 		if (platform.machine() == 'armv7l'):
-			environ['TZ'] = self.get_value(self._settingspath, '/Settings/System/TimeZone')
+			os.environ['TZ'] = self.get_value(self._settingspath, '/Settings/System/TimeZone')
 
-	def tearDown(self):
-		self.stop_services('battery')
-		self.stop_services('vebus')
-		self.stop_services('pvinverter')
-		self.stop_services('solarcharger')
+	def handle_changed_setting(setting, old_val, new_val):
+		pass
+
+	def doCleanups(self):
+		super(TestGenerator, self).doCleanups()
+		self.stop_services()
 
 	def start_services(self, service):
 		if service == 'battery':
-			unittest.batteryp = Popen([sys.executable, "dummybattery.py"], stdout=PIPE, stderr=PIPE)
-			while unittest.batteryp.stderr.readline().find(":/Soc") == -1:
-				pass
+			self.batteryp = Popen([sys.executable, "dummybattery.py"], stdout=PIPE, stderr=STDOUT)
+			while True:
+				line = self.batteryp.stdout.readline()
+				#print line.rstrip()
+				if not line or ":/Soc" in line:
+					break
 		elif service == 'vebus':
-			unittest.vebusp = Popen([sys.executable, "dummyvebus.py"], stdout=PIPE, stderr=PIPE)
-			while unittest.vebusp.stderr.readline().find(":/Soc") == -1:
-				pass
+			self.vebusp = Popen([sys.executable, "dummyvebus.py"], stdout=PIPE, stderr=STDOUT)
+			while True:
+				line = self.vebusp.stdout.readline()
+				#print line.rstrip()
+				if not line or ":/Soc" in line:
+					break
 		elif service == 'solarcharger':
-			unittest.solarchargerp = Popen([sys.executable, "dummysolarcharger.py"], stdout=PIPE, stderr=PIPE)
+			self.solarchargerp = Popen([sys.executable, "dummysolarcharger.py"], stdout=PIPE, stderr=STDOUT)
+			while True:
+				line = self.solarchargerp.stdout.readline()
+				#print line.rstrip()
+				if not line or "/Dc/0/Power: 291" in line:
+					break
 		elif service == 'pvinverter':
-			unittest.pvinverterp = Popen([sys.executable, "dummypvinverter.py"], stdout=PIPE, stderr=PIPE)
-			while unittest.pvinverterp.stderr.readline().find(":/Ac/L3/Power") == -1:
-				pass
+			self.pvinverterp = Popen([sys.executable, "dummypvinverter.py"], stdout=PIPE, stderr=STDOUT)
+			while True:
+				line = self.pvinverterp.stdout.readline()
+				#print line.rstrip()
+				if not line or ":/Ac/L3/Power" in line:
+					break
+		elif service == 'dbusgenerator':
+			self.dbusgeneratorp = Popen([sys.executable, "../dbus_generator.py"], stdout=PIPE, stderr=STDOUT)
+			while True:
+				line = self.dbusgeneratorp.stdout.readline()
+				#print line.rstrip()
+				if not line or ":vedbus:registered" in line:
+					break
 
-	def stop_services(self, service):
-		if service == 'battery':
-			unittest.batteryp.kill()
-			unittest.batteryp.wait()
-		elif service == 'vebus':
-			unittest.vebusp.kill()
-			unittest.vebusp.wait()
-		elif service == 'pvinverter':
-			unittest.pvinverterp.kill()
-			unittest.pvinverterp.wait()
-		elif service == 'solarcharger':
-			unittest.solarchargerp.kill()
-			unittest.solarchargerp.wait()
+	def stop_services(self):
+		self.stop_battery_service()
+		self.stop_vebus_service()
+		self.stop_pvinverter_service()
+		self.stop_solarcharger_service()
+		self.stop_dbusgenerator_service()
+
+	def stop_vebus_service(self):
+		try:
+			self.vebusp.kill()
+			self.vebusp.wait()
+		except (AttributeError, OSError):
+			pass
+
+	def stop_pvinverter_service(self):
+		try:
+			self.pvinverterp.kill()
+			self.pvinverterp.wait()
+		except (AttributeError, OSError):
+			pass
+
+	def stop_solarcharger_service(self):
+		try:
+			self.solarchargerp.kill()
+			self.solarchargerp.wait()
+		except (AttributeError, OSError):
+			pass
+
+	def stop_dbusgenerator_service(self):
+		try:
+			self.dbusgeneratorp.kill()
+			self.dbusgeneratorp.wait()
+		except (AttributeError, OSError):
+			pass
+
+	def stop_battery_service(self):
+		try:
+			self.batteryp.kill()
+			self.batteryp.wait()
+		except (AttributeError, OSError):
+			pass
 
 	def reset_all_conditons(self):
 		self.set_condition("Soc", 0, 0, 0)
@@ -103,8 +199,8 @@ class TestGenerator(unittest.TestCase):
 		# Make the condition timer start setting current value to start/stop value
 		# then set current value off the condition start/stop value, it should reset the timer.
 
-		startvalue = random.uniform(-30, -11)
-		stopvalue = random.uniform(-10, -1)
+		startvalue = int(random.uniform(-30, -11))
+		stopvalue = int(random.uniform(-10, -1))
 		starttimer = random.randint(5, 10)
 		stoptimer = random.randint(5, 10)
 
@@ -176,7 +272,6 @@ class TestGenerator(unittest.TestCase):
 		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/StartTime', currenttime)
 		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Interval', interval)
 		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Duration', 15)
-		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/Enabled', 1)
 
 		self.assertEqual(1, self.get_state(3))
 		self.assertEqual(1, self.get_state(7))
@@ -197,9 +292,9 @@ class TestGenerator(unittest.TestCase):
 		self.set_value(self._settingspath, '/Settings/Generator0/TestRun/SkipRuntime', 36000)
 		self.assertEqual(1, self.get_state(5))
 
-		# Remove battery, rerty mechanism must keep the generator 
+		# Remove battery, rerty mechanism must keep the generator
 		# running
-		self.stop_services('battery')
+		self.stop_battery_service()
 		self.assertEqual(1, self.get_state(self.retriesonerror / 2))
 		self.start_services('battery')
 
@@ -290,7 +385,7 @@ class TestGenerator(unittest.TestCase):
 		self.set_value(self.batteryservice, '/Dc/0/Current', -15)
 		self.set_condition_timed("BatteryCurrent", 14, 10, 0, 0, 1)
 		self.assertEqual(1, self.get_state(5))
-		self.stop_services('battery')
+		self.stop_battery_service()
 		# Retry connection mecanism must keep the generator running
 		# for 5 minutres
 		self.assertEqual(1, self.get_state(self.retriesonerror / 2))
@@ -304,7 +399,7 @@ class TestGenerator(unittest.TestCase):
 		self.set_value(self.batteryservice, '/Dc/0/Current', -15)
 		self.set_condition_timed("BatteryCurrent", 14, 10, 0, 0, 1)
 		self.assertEqual(1, self.get_state(5))
-		self.stop_services('battery')
+		self.stop_battery_service()
 		# Retry connection mecanism must keep the generator running
 		# for 5 minutres
 		self.assertEqual(1, self.get_state(self.retriesonerror / 2))
@@ -317,13 +412,13 @@ class TestGenerator(unittest.TestCase):
 
 	def test_remove_vebus_service(self):
 		self.set_value(self._settingspath, '/Settings/Generator0/OnLossCommunication', 0)
-		self.stop_services('vebus')
+		self.stop_vebus_service()
 		self.start_services('vebus')
 		time.sleep(5)
 		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
 		self.set_condition_timed("AcLoad", 14, 10, 0, 5, 1)
 		self.assertEqual(1, self.get_state(5))
-		self.stop_services('vebus')
+		self.stop_vebus_service()
 		# Retry connection mecanism must keep the generator running
 		# for 'retriesonerror' seconds
 		self.assertEqual(1, self.get_state(self.retriesonerror / 2))
@@ -333,20 +428,20 @@ class TestGenerator(unittest.TestCase):
 		self.assertEqual(1, self.get_state(7))
 
 	def test_autostart_oncomfailure(self):
-		self.stop_services('vebus')
+		self.stop_vebus_service()
 		self.start_services('vebus')
 		# Enable acload condition otherwise communications are not checked
 		self.set_condition_timed("AcLoad", 140, 10, 1500, 0, 1)
 		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
 		self.set_value(self._settingspath, '/Settings/Generator0/OnLossCommunication', 1)
-		self.stop_services('vebus')
+		self.stop_vebus_service()
 		self.assertEqual(1, self.get_state(self.retriesonerror + 10))
 		self.start_services('vebus')
 
 	def test_keeprunning_oncomfailure(self):
 		self.set_value(self._settingspath, '/Settings/Generator0/OnLossCommunication', 2)
 
-		self.stop_services('vebus')
+		self.stop_vebus_service()
 		# Generator not running must expect the same after connection lost
 		self.assertEqual(0, self.get_state(self.retriesonerror + 5))
 
@@ -355,7 +450,7 @@ class TestGenerator(unittest.TestCase):
 		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
 		self.set_condition_timed("AcLoad", 14, 10, 0, 5, 1)
 		self.assertEqual(1, self.get_state(5))
-		self.stop_services('vebus')
+		self.stop_vebus_service()
 		# Generator is running and should keep running after communications error
 		self.assertEqual(1, self.get_state(self.retriesonerror / 2))
 		self.assertEqual(1, self.get_state(self.retriesonerror / 2 + 5))
@@ -378,7 +473,7 @@ class TestGenerator(unittest.TestCase):
 		self.assertEqual(1, self.get_state(5))
 
 	def test_go_off(self):
-		self.stop_services('vebus')
+		self.stop_vebus_service()
 		self.start_services('vebus')
 		time.sleep(5)
 		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 16)
@@ -432,4 +527,5 @@ class TestGenerator(unittest.TestCase):
 		return dbusobject.GetValue()
 
 if __name__ == '__main__':
+	DBusGMainLoop(set_as_default=True)
 	unittest.main(exit=True)

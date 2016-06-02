@@ -39,7 +39,7 @@ dbusgenerator = None
 class DbusGenerator:
 
 	def __init__(self):
-		self._bus = dbus.SystemBus() if (platform.machine() == 'armv7l') else dbus.SessionBus()
+		self._bus = dbus.SystemBus() if (platform.machine() == 'armv7l' or 'DBUS_SESSION_BUS_ADDRESS' not in environ) else dbus.SessionBus()
 		self.RELAY_GPIO_FILE = '/sys/class/gpio/gpio182/value'
 		self.HISTORY_DAYS = 30
 		# One second per retry
