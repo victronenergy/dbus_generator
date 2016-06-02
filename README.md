@@ -1,6 +1,8 @@
 dbus_generator
 ==============
 
+[![Build Status](https://travis-ci.org/victronenergy/dbus_generator.svg?branch=master)](https://travis-ci.org/victronenergy/dbus_generator)
+
 Python script taking care of generator start/stop based on battery status and/or AC load. To be used on the Color Control GX.
 
 The CCGX internal relay can be used to start a generator using its internal relay. With this script you can set conditions to make the relay open or close.
