@@ -22,14 +22,16 @@ before_script:
   # Startup localsettings and wait 5 to let it startup.
   - sudo mkdir -p /data/conf
   - sudo chown "$(whoami)" /data/conf
-  # The output of localsettings is not surpressed because Travis kills utest.py
-  # if no output is generated for > 10mins.
-  - . ~/dbus_env.sh && ./localsettings/localsettings.py &
+  #
+  # Startup localsettings.py
+  - . ~/dbus_env.sh && ./localsettings/localsettings.py 2>/dev/null >/dev/null & 
   - sleep 5
   #
-  # Startup dbus_systemcalc.py
-  - . ~/dbus_env.sh && ./dbus-systemcalc-py/dbus_systemcalc.py 2>/dev/null >/dev/null & 
+  # The output of systemcalc is not surpressed because Travis kills utest.py
+  # if no output is generated for > 10mins.
+  - . ~/dbus_env.sh && ./dbus-systemcalc-py/dbus_systemcalc.py &
   - sleep 5
+
 
 script:
   - cd ./test
