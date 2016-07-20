@@ -59,6 +59,7 @@ class DbusGenerator:
 		self._vebusservice_overload_import = None
 		self._vebusservice = None
 		self._vebusservice_available = False
+		self._relay_state_import = None
 
 		self._condition_stack = {
 			'batteryvoltage': {
@@ -238,6 +239,18 @@ class DbusGenerator:
 
 	def _evaluate_if_we_are_needed(self):
 		if self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Function') == 1:
+			if not self._relay_state_import:
+				logger.info('Getting relay from systemcalc.')
+				try:
+					self._relay_state_import = VeDbusItemImport(
+						bus=self._bus, serviceName='com.victronenergy.system',
+						path='/Relay/0/State',
+						eventCallback=None, createsignal=True)
+				except dbus.exceptions.DBusException:
+					logger.info('Systemcalc relay not available.')
+					self._relay_state_import = None
+					pass
+
 			if self._dbusservice is None:
 				logger.info('Action! Going on dbus and taking control of the relay.')
 
@@ -245,7 +258,6 @@ class DbusGenerator:
 														 bus=self._bus, serviceName='com.victronenergy.settings',
 														 path='/Settings/Relay/Polarity',
 														 eventCallback=None, createsignal=True)
-
 				# As is not possible to keep the relay state during the CCGX power cycles,
 				# set the relay polarity to normally open.
 				if relay_polarity_import.get_value() == 1:
@@ -298,6 +310,7 @@ class DbusGenerator:
 					self._reset_condition(self._condition_stack[condition])
 				logger.info('Relay function is no longer set to generator start/stop: made sure generator is off ' +
 							'and now going off dbus')
+				self._relay_state_import = None
 
 	def _device_added(self, dbusservicename, instance):
 		self._evaluate_if_we_are_needed()
@@ -305,6 +318,10 @@ class DbusGenerator:
 
 	def _device_removed(self, dbusservicename, instance):
 		self._evaluate_if_we_are_needed()
+		# Relay handling depends on systemcalc, if the service disappears restart
+		# the relay state import
+		if dbusservicename == "com.victronenergy.system":
+			self._relay_state_import = None
 		self._determineservices()
 
 	def _dbus_value_changed(self, dbusServiceName, dbusPath, options, changes, deviceInstance):
@@ -695,7 +712,6 @@ class DbusGenerator:
 		# batterymeasurement is either 'default' or 'com_victronenergy_battery_288/Dc/0'.
 		# In case it is set to default, we use the AutoSelected battery measurement, given by
 		# SystemCalc.
-
 		batterymeasurement = None
 		batteryservicename = None
 		newbatteryservice = None
@@ -802,26 +818,34 @@ class DbusGenerator:
 				self._vebusservice_overload_import = VeDbusItemImport(
 						bus=self._bus, serviceName=vebusservice.get_value(),
 						path='/Alarms/Overload', eventCallback=None, createsignal=True)
-			except Exception:
-				logger.info('Error getting Vebus service!')
-				self._vebusservice_available = False
-				self._vebusservice_high_temperature_import = None
-				self._vebusservice_overload_import = None
-
-		elif not vebusservice.get_value() and self._vebusservice_available:
-			logger.info('Vebus service (%s) dissapeared! Stop evaluating related conditions'
-						% self._vebusservice)
+		except Exception:
+			logger.info('Error getting Vebus service!')
 			self._vebusservice_available = False
 			self._vebusservice_high_temperature_import = None
 			self._vebusservice_overload_import = None
+
+			logger.info('Vebus service (%s) dissapeared! Stop evaluating related conditions'
+							% self._vebusservice)
 
 		# Trigger an immediate check of system status
 		self._changed = True
 
 	def _start_generator(self, condition):
+		if not self._relay_state_import:
+			logger.info("Relay import not available, can't start generator by %s condition" % condition)
+			return
+
+		systemcalc_relay_state = 0
+		state = self._dbusservice['/State']
+
+		try:
+			systemcalc_relay_state = self._relay_state_import.get_value()
+		except dbus.exceptions.DBusException:
+			logger.info('Error getting relay state')
+
 		# This function will start the generator in the case generator not
 		# already running. When differs, the RunningByCondition is updated
-		if self._dbusservice['/State'] == 0:
+		if state == 0 or systemcalc_relay_state != state:
 			self._dbusservice['/State'] = 1
 			self._update_relay()
 			self._starttime = time.time()
@@ -833,7 +857,19 @@ class DbusGenerator:
 		self._dbusservice['/RunningByCondition'] = condition
 
 	def _stop_generator(self):
-		if self._dbusservice['/State'] == 1:
+		if not self._relay_state_import:
+			logger.info("Relay import not available, can't stop generator")
+			return
+
+		systemcalc_relay_state = 1
+		state = self._dbusservice['/State']
+
+		try:
+			systemcalc_relay_state = self._relay_state_import.get_value()
+		except dbus.exceptions.DBusException:
+			logger.info('Error getting relay state')
+
+		if state == 1 or systemcalc_relay_state != state:
 			self._dbusservice['/State'] = 0
 			self._update_relay()
 			logger.info('Stopping generator that was running by %s condition' %
@@ -847,16 +883,17 @@ class DbusGenerator:
 			self._last_runtime_update = 0
 
 	def _update_relay(self):
+		if not self._relay_state_import:
+			logger.info("Relay import not available")
+			return
 		# Relay polarity 0 = NO, 1 = NC
 		polarity = bool(self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Polarity'))
 		w = int(not polarity) if bool(self._dbusservice['/State']) else int(polarity)
 
 		try:
-			f = open(self.RELAY_GPIO_FILE, 'w')
-			f.write(str(w))
-			f.close()
-		except IOError:
-			logger.info('Error writting to the relay GPIO file!: %s' % self.RELAY_GPIO_FILE)
+			self._relay_state_import.set_value(dbus.Int32(w, variant_level=1))
+		except dbus.exceptions.DBusException:
+			logger.info('Error setting relay state')
 
 
 if __name__ == '__main__':
