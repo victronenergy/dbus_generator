@@ -10,6 +10,15 @@ before_install:
   - sudo apt-get install python-tracing
   - git clone --recursive https://github.com/victronenergy/localsettings
   - git clone --recursive https://github.com/victronenergy/dbus-systemcalc-py
+  - sudo mkdir -p /data/conf
+  - sudo mkdir -p /etc/venus
+  - sudo mkdir -p /data/gpio182
+  - sudo touch /data/gpio182/value
+  - sudo chown "$(whoami)" /data/gpio182/value
+  - sudo echo "0" > /data/gpio182/value
+  - sudo touch /etc/venus/relays
+  - sudo chown "$(whoami)" /etc/venus/relays
+  - sudo echo "/data/gpio182" > /etc/venus/relays
 
 before_script:
   # The timezone in the test script must be the same as the timezone of the test environment
@@ -20,11 +29,10 @@ before_script:
   - dbus-launch --sh-syntax > ~/dbus_env.sh
   #
   # Startup localsettings and wait 5 to let it startup.
-  - sudo mkdir -p /data/conf
   - sudo chown "$(whoami)" /data/conf
   #
   # Startup localsettings.py
-  - . ~/dbus_env.sh && ./localsettings/localsettings.py 2>/dev/null >/dev/null & 
+  - . ~/dbus_env.sh && ./localsettings/localsettings.py 2>/dev/null >/dev/null &
   - sleep 5
   #
   # The output of systemcalc is not surpressed because Travis kills utest.py
