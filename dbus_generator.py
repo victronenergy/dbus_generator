@@ -723,15 +723,18 @@ class DbusGenerator:
 			oldservice = None
 
 		if batterymeasurement:
-			batteryservicename = VeDbusItemImport(
-				bus=self._bus,
-				serviceName="com.victronenergy.system",
-				path='/ServiceMapping/' + batterymeasurement.split("/", 1)[0],
-				eventCallback=None,
-				createsignal=False)
+			try:
+				batteryservicename = VeDbusItemImport(
+					bus=self._bus,
+					serviceName="com.victronenergy.system",
+					path='/ServiceMapping/' + batterymeasurement.split("/", 1)[0],
+					eventCallback=None,
+					createsignal=False)
 
-			if batteryservicename.get_value():
-				newbatteryservice = batteryservicename.get_value() + batteryprefix
+				if batteryservicename.get_value():
+					newbatteryservice = batteryservicename.get_value() + batteryprefix
+			except dbus.exceptions.DBusException:
+				pass
 			else:
 				newbatteryservice = None
 
@@ -775,21 +778,22 @@ class DbusGenerator:
 			self._battery_measurement_available = False
 
 		# Get the default VE.Bus service and import high temperature and overload warnings
-		vebusservice = VeDbusItemImport(
+		try:
+			vebusservice = VeDbusItemImport(
 				bus=self._bus,
 				serviceName="com.victronenergy.system",
 				path='/VebusService',
 				eventCallback=None,
 				createsignal=False)
 
-		if vebusservice.get_value() and (vebusservice.get_value() != self._vebusservice
-										 or not self._vebusservice_available):
-			self._vebusservice = vebusservice.get_value()
-			self._vebusservice_available = True
+			if vebusservice.get_value() and (vebusservice.get_value() != self._vebusservice
+											 or not self._vebusservice_available):
+				self._vebusservice = vebusservice.get_value()
+				self._vebusservice_available = True
 
-			logger.info('Vebus service (%s) found! Using it for generator start/stop'
-						% vebusservice.get_value())
-			try:
+				logger.info('Vebus service (%s) found! Using it for generator start/stop'
+							% vebusservice.get_value())
+
 				self._vebusservice_high_temperature_import = VeDbusItemImport(
 						bus=self._bus, serviceName=vebusservice.get_value(),
 						path='/Alarms/HighTemperature', eventCallback=None, createsignal=True)
