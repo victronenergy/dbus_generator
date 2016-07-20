@@ -38,12 +38,12 @@ dbusgenerator = None
 
 class DbusGenerator:
 
-	def __init__(self):
+	def __init__(self, retries=300):
 		self._bus = dbus.SystemBus() if (platform.machine() == 'armv7l' or 'DBUS_SESSION_BUS_ADDRESS' not in environ) else dbus.SessionBus()
 		self.RELAY_GPIO_FILE = '/sys/class/gpio/gpio182/value'
 		self.HISTORY_DAYS = 30
 		# One second per retry
-		self.RETRIES_ON_ERROR = 300
+		self.RETRIES_ON_ERROR = retries
 		self._testrun_soc_retries = 0
 		self._last_counters_check = 0
 		self._dbusservice = None
@@ -106,6 +106,7 @@ class DbusGenerator:
 				'stop_timer': 0,
 				'valid': True,
 				'enabled': False,
+				'retries': 0,
 				'monitoring': 'vebus'
 			},
 			'inverteroverload': {
@@ -866,6 +867,7 @@ if __name__ == '__main__':
 
 	parser.add_argument('-d', '--debug', help='set logging level to debug',
 						action='store_true')
+	parser.add_argument('-r', '--retries', help='Retries on error', default=300, type=int)
 
 	args = parser.parse_args()
 
@@ -875,7 +877,7 @@ if __name__ == '__main__':
 	# Have a mainloop, so we can send/receive asynchronous calls to and from dbus
 	DBusGMainLoop(set_as_default=True)
 
-	generator = DbusGenerator()
+	generator = DbusGenerator(args.retries)
 	# Start and run the mainloop
 	mainloop = gobject.MainLoop()
 	mainloop.run()
