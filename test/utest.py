@@ -21,11 +21,17 @@ from settingsdevice import SettingsDevice
 
 class TestGenerator(unittest.TestCase):
 
+	def run(self, result=None):
+		if result.failures or result.errors:
+			print "aborted"
+		else:
+			super(TestGenerator, self).run(result)
+
 	def setUp(self):
 		self.start_services('vebus')
 		self.start_services('battery')
-		self.start_services('pvinverter')
-		self.start_services('solarcharger')
+		#self.start_services('pvinverter')
+		#self.start_services('solarcharger')
 
 		self.bus = dbus.SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else dbus.SystemBus()
 
@@ -74,8 +80,9 @@ class TestGenerator(unittest.TestCase):
 		self.vebusservice = 'com.victronenergy.vebus.tty23'
 		self.solarchergerservice = 'com.victronenergy.solarcharger.tty33'
 		self.pvinverterservice = 'com.victronenergy.pvinverter.test'
+		self.systemcalcservice = 'com.victronenergy.system'
 
-		self.retriesonerror = 300
+		self.retriesonerror = 30
 
 		self.set_value(self._settingspath, "/Settings/Relay/Function", 1)
 		self.fill_history()
@@ -121,7 +128,7 @@ class TestGenerator(unittest.TestCase):
 				if not line or ":/Ac/L3/Power" in line:
 					break
 		elif service == 'dbusgenerator':
-			self.dbusgeneratorp = Popen([sys.executable, "../dbus_generator.py"], stdout=PIPE, stderr=STDOUT)
+			self.dbusgeneratorp = Popen([sys.executable, "../dbus_generator.py","-r","30"], stdout=PIPE, stderr=STDOUT)
 			while True:
 				line = self.dbusgeneratorp.stdout.readline()
 				#print line.rstrip()
@@ -378,7 +385,6 @@ class TestGenerator(unittest.TestCase):
 		self.set_value(self.batteryservice, '/Dc/0/Voltage', 24)
 
 		self.assertGreaterEqual(self.get_value(self._generatorpath, '/Runtime'), 11)
-
 		self.assertEqual(0,  self.get_state(stoptimer + 2))
 
 	def test_remove_battery_service(self):
@@ -412,8 +418,6 @@ class TestGenerator(unittest.TestCase):
 
 	def test_remove_vebus_service(self):
 		self.set_value(self._settingspath, '/Settings/Generator0/OnLossCommunication', 0)
-		self.stop_vebus_service()
-		self.start_services('vebus')
 		time.sleep(5)
 		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
 		self.set_condition_timed("AcLoad", 14, 10, 0, 5, 1)
@@ -428,8 +432,6 @@ class TestGenerator(unittest.TestCase):
 		self.assertEqual(1, self.get_state(7))
 
 	def test_autostart_oncomfailure(self):
-		self.stop_vebus_service()
-		self.start_services('vebus')
 		# Enable acload condition otherwise communications are not checked
 		self.set_condition_timed("AcLoad", 140, 10, 1500, 0, 1)
 		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
@@ -440,12 +442,8 @@ class TestGenerator(unittest.TestCase):
 
 	def test_keeprunning_oncomfailure(self):
 		self.set_value(self._settingspath, '/Settings/Generator0/OnLossCommunication', 2)
-
-		self.stop_vebus_service()
 		# Generator not running must expect the same after connection lost
 		self.assertEqual(0, self.get_state(self.retriesonerror + 5))
-
-		self.start_services('vebus')
 		time.sleep(5)
 		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 15)
 		self.set_condition_timed("AcLoad", 14, 10, 0, 5, 1)
@@ -472,32 +470,14 @@ class TestGenerator(unittest.TestCase):
 		self.set_value(self._generatorpath, '/ManualStart', 1)
 		self.assertEqual(1, self.get_state(5))
 
-	def test_go_off(self):
-		self.stop_vebus_service()
-		self.start_services('vebus')
-		time.sleep(5)
-		self.set_value(self.vebusservice, '/Ac/Out/L1/P', 16)
-		self.set_condition_timed("AcLoad", 14, 10, 16, 5, 1)
-		self.assertEqual(1, self.get_state(20))
-		# Set relay function to alarm relay
-		self.set_value(self._settingspath, "/Settings/Relay/Function", 0)
-		time.sleep(5)
-		# Set relay funtion to generator start/stop
-		self.set_value(self._settingspath, "/Settings/Relay/Function", 1)
-		# When the service go off all timers are reset, at this point generator
-		# must be stopped. Times/delaus are long because differences between
-		# PC and CCGX startup times, setting long times we make sure the test will
-		# work on both plattforms.
-		self.assertEqual(0, self.get_state(15))
-		# Timer finished, generator must be started
-		self.assertEqual(1, self.get_state(20))
-
 	def wait_and_get(self, setting, delay):
 		time.sleep(delay)
 		return self.get_value(self._generatorpath, setting)
 
 	def get_state(self, delay):
 		state = self.wait_and_get('/State', delay)
+		state_on_systemcalc = self.get_value(self.systemcalcservice, "/Relay/0/State")
+		self.assertEqual(state_on_systemcalc, state)
 
 		return state
 
@@ -519,12 +499,11 @@ class TestGenerator(unittest.TestCase):
 			self.set_value(self._settingspath, "/Settings/Generator0/" + condition + "/" + s, v)
 
 	def set_value(self, path, setting, value):
-		dbusobject = dbus.Interface(self.bus.get_object(path, setting), None)
-		dbusobject.SetValue(value)
+		self.bus.get_object(path, setting, introspect=False).SetValue(value)
 
 	def get_value(self, path, setting):
-		dbusobject = dbus.Interface(self.bus.get_object(path, setting), None)
-		return dbusobject.GetValue()
+		val = self.bus.get_object(path, setting, introspect=False).GetValue()
+		return val
 
 if __name__ == '__main__':
 	DBusGMainLoop(set_as_default=True)
