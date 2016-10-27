@@ -22,6 +22,7 @@ import sys
 import json
 import os
 from os import environ
+import monotonic_time
 
 # Victron packages
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), './ext/velib_python'))
@@ -401,7 +402,8 @@ class DbusGenerator:
 
 		# Update current and accumulated runtime.
 		if self._dbusservice['/State'] == 1:
-			self._dbusservice['/Runtime'] = int(time.time() - self._starttime)
+			mtime = monotonic_time.monotonic_time().to_seconds_double()
+			self._dbusservice['/Runtime'] = int(mtime - self._starttime)
 			# By performance reasons, accumulated runtime is only updated
 			# once per 10s. When the generator stops is also updated.
 			if self._dbusservice['/Runtime'] - self._last_runtime_update >= 10:
@@ -848,7 +850,7 @@ class DbusGenerator:
 		if state == 0 or systemcalc_relay_state != state:
 			self._dbusservice['/State'] = 1
 			self._update_relay()
-			self._starttime = time.time()
+			self._starttime = monotonic_time.monotonic_time().to_seconds_double()
 			logger.info('Starting generator by %s condition' % condition)
 		elif self._dbusservice['/RunningByCondition'] != condition:
 			logger.info('Generator previously running by %s condition is now running by %s condition'
