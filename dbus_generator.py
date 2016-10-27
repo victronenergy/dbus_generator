@@ -23,11 +23,9 @@ import json
 import os
 from os import environ
 import monotonic_time
-
 # Victron packages
-sys.path.insert(1, os.path.join(os.path.dirname(__file__), './ext/velib_python'))
+sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'ext', 'velib_python'))
 from vedbus import VeDbusService
-from vedbus import VeDbusItemImport
 from ve_utils import exit_on_error
 from dbusmonitor import DbusMonitor
 from settingsdevice import SettingsDevice
@@ -37,14 +35,14 @@ softwareversion = '1.2.9'
 dbusgenerator = None
 
 
-class DbusGenerator:
+class Generator:
 
-	def __init__(self, retries=300):
-		self._bus = dbus.SystemBus() if (platform.machine() == 'armv7l' or 'DBUS_SESSION_BUS_ADDRESS' not in environ) else dbus.SessionBus()
-		self.RELAY_GPIO_FILE = '/sys/class/gpio/gpio182/value'
+	def __init__(self):
+		self._bus = dbus.SystemBus() if (platform.machine() == 'armv7l'
+											or 'DBUS_SESSION_BUS_ADDRESS' not in environ) else dbus.SessionBus()
 		self.HISTORY_DAYS = 30
 		# One second per retry
-		self.RETRIES_ON_ERROR = retries
+		self.RETRIES_ON_ERROR = 300
 		self._testrun_soc_retries = 0
 		self._last_counters_check = 0
 		self._dbusservice = None
@@ -52,15 +50,10 @@ class DbusGenerator:
 		self._manualstarttimer = 0
 		self._last_runtime_update = 0
 		self._timer_runnning = 0
-		self._battery_measurement_voltage_import = None
-		self._battery_measurement_current_import = None
-		self._battery_measurement_soc_import = None
-		self._battery_measurement_available = True
-		self._vebusservice_high_temperature_import = None
-		self._vebusservice_overload_import = None
+		self._battery_service = None
+		self._battery_prefix = None
 		self._vebusservice = None
 		self._vebusservice_available = False
-		self._relay_state_import = None
 
 		self._condition_stack = {
 			'batteryvoltage': {
@@ -139,35 +132,61 @@ class DbusGenerator:
 		# add some dummy data. This can go away when DbusMonitor is more generic.
 		dummy = {'code': None, 'whenToLog': 'configChange', 'accessLevel': None}
 
-		# TODO: possible improvement: don't use the DbusMonitor it all, since we are only monitoring
-		# a set of static values which will always be available. DbusMonitor watches for services
-		# that come and go, and takes care of automatic signal subscribtions etc. etc: all not necessary
-		# in this use case where we have fixed services names (com.victronenergy.settings, and c
-		# com.victronenergy.system).
-		self._dbusmonitor = DbusMonitor({
+		dbus_tree = {
 			'com.victronenergy.settings': {   # This is not our setting so do it here. not in supportedSettings
 				'/Settings/Relay/Function': dummy,
 				'/Settings/Relay/Polarity': dummy,
 				'/Settings/System/TimeZone': dummy,
+				'/Settings/System/AcInput1': dummy,
+				'/Settings/System/AcInput2': dummy,
+				'/Settings/Relay/Polarity': dummy
 				},
-			'com.victronenergy.system': {   # This is not our setting so do it here. not in supportedSettings
+			'com.victronenergy.battery': {
+				'/Dc/0/Voltage': dummy,
+				'/Dc/0/Current': dummy,
+				'/Dc/1/Voltage': dummy,
+				'/Dc/1/Current': dummy,
+				'/Soc': dummy
+				},
+			'com.victronenergy.vebus': {
+				'/Ac/Out/L1/P': dummy,
+				'/Ac/Out/L2/P': dummy,
+				'/Ac/Out/L3/P': dummy,
+				'/Ac/Out/P': dummy,
+				'/Dc/0/Voltage': dummy,
+				'/Dc/0/Current': dummy,
+				'/Dc/1/Voltage': dummy,
+				'/Dc/1/Current': dummy,
+				'/Soc': dummy,
+				'/Alarms/HighTemperature': dummy,
+				'/Alarms/Overload': dummy
+				},
+			'com.victronenergy.system': {
 				'/Ac/Consumption/Total/Power': dummy,
-				'/Ac/PvOnOutput/Total/Power': dummy,
-				'/Ac/PvOnGrid/Total/Power': dummy,
+				'/Ac/Consumption/L1/Power': dummy,
+				'/Ac/Consumption/L2/Power': dummy,
+				'/Ac/Consumption/L3/Power': dummy,
+				'/Ac/PvOnOutput/L1/Power': dummy,
+				'/Ac/PvOnOutput/L2/Power': dummy,
+				'/Ac/PvOnOutput/L3/Power': dummy,
+				'/Ac/PvOnGrid/L1/Power': dummy,
+				'/Ac/PvOnGrid/L2/Power': dummy,
+				'/Ac/PvOnGrid/L3/Power': dummy,
 				'/Ac/PvOnGenset/Total/Power': dummy,
 				'/Dc/Pv/Power': dummy,
 				'/AutoSelectedBatteryMeasurement': dummy,
+				'/Ac/ActiveIn/Source': dummy,
+				'/VebusService': dummy,
+				'/Relay/0/State': dummy
 				}
-		}, self._dbus_value_changed, self._device_added, self._device_removed)
+		}
 
-		# Set timezone to user selected timezone
-		environ['TZ'] = self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/System/TimeZone')
+		self._dbusmonitor = self._create_dbus_monitor(dbus_tree, valueChangedCallback=self._dbus_value_changed,
+			deviceAddedCallback=self._device_added, deviceRemovedCallback=self._device_removed)
 
-		# Connect to localsettings
-		self._settings = SettingsDevice(
-			bus=self._bus,
-			supportedSettings={
+		supported_settings = {
 				'autostart': ['/Settings/Generator0/AutoStartEnabled', 1, 0, 1],
+				'stopwhengridavailable': ['/Settings/Generator0/StopWhenGridAvailable', 0, 0, 0],
 				'accumulateddaily': ['/Settings/Generator0/AccumulatedDaily', '', 0, 0],
 				'accumulatedtotal': ['/Settings/Generator0/AccumulatedTotal', 0, 0, 0],
 				'batterymeasurement': ['/Settings/Generator0/BatteryService', "default", 0, 0],
@@ -180,7 +199,7 @@ class DbusGenerator:
 				'quiethoursendtime': ['/Settings/Generator0/QuietHours/EndTime', 21600, 0, 86400],
 				# SOC
 				'socenabled': ['/Settings/Generator0/Soc/Enabled', 0, 0, 1],
-				'socstart': ['/Settings/Generator0/Soc/StartValue', 90, 0, 100],
+				'socstart': ['/Settings/Generator0/Soc/StartValue', 80, 0, 100],
 				'socstop': ['/Settings/Generator0/Soc/StopValue', 90, 0, 100],
 				'qh_socstart': ['/Settings/Generator0/Soc/QuietHoursStartValue', 90, 0, 100],
 				'qh_socstop': ['/Settings/Generator0/Soc/QuietHoursStopValue', 90, 0, 100],
@@ -194,12 +213,12 @@ class DbusGenerator:
 				'qh_batteryvoltagestop': ['/Settings/Generator0/BatteryVoltage/QuietHoursStopValue', 12.4, 0, 100],
 				# Current
 				'batterycurrentenabled': ['/Settings/Generator0/BatteryCurrent/Enabled', 0, 0, 1],
-				'batterycurrentstart': ['/Settings/Generator0/BatteryCurrent/StartValue', 10.5, 0.5, 1000],
-				'batterycurrentstop': ['/Settings/Generator0/BatteryCurrent/StopValue', 5.5, 0, 1000],
+				'batterycurrentstart': ['/Settings/Generator0/BatteryCurrent/StartValue', 10.5, 0.5, 10000],
+				'batterycurrentstop': ['/Settings/Generator0/BatteryCurrent/StopValue', 5.5, 0, 10000],
 				'batterycurrentstarttimer': ['/Settings/Generator0/BatteryCurrent/StartTimer', 20, 0, 10000],
 				'batterycurrentstoptimer': ['/Settings/Generator0/BatteryCurrent/StopTimer', 20, 0, 10000],
-				'qh_batterycurrentstart': ['/Settings/Generator0/BatteryCurrent/QuietHoursStartValue', 20.5, 0, 1000],
-				'qh_batterycurrentstop': ['/Settings/Generator0/BatteryCurrent/QuietHoursStopValue', 15.5, 0, 1000],
+				'qh_batterycurrentstart': ['/Settings/Generator0/BatteryCurrent/QuietHoursStartValue', 20.5, 0, 10000],
+				'qh_batterycurrentstop': ['/Settings/Generator0/BatteryCurrent/QuietHoursStopValue', 15.5, 0, 10000],
 				# AC load
 				'acloadenabled': ['/Settings/Generator0/AcLoad/Enabled', 0, 0, 1],
 				'acloadstart': ['/Settings/Generator0/AcLoad/StartValue', 1600, 5, 100000],
@@ -224,59 +243,34 @@ class DbusGenerator:
 				'testrunruntime': ['/Settings/Generator0/TestRun/Duration', 7200, 1, 86400],
 				'testrunskipruntime': ['/Settings/Generator0/TestRun/SkipRuntime', 0, 0, 100000],
 				'testruntillbatteryfull': ['/Settings/Generator0/TestRun/RunTillBatteryFull', 0, 0, 1]
-			},
-			eventCallback=self._handle_changed_setting)
+			}
 
-		# Whenever services come or go, we need to check if it was a service we use. Note that this
-		# is a bit double: DbusMonitor does the same thing. But since we don't use DbusMonitor to
-		# monitor for com.victronenergy.battery, .vebus, .charger or any other possible source of
-		# battery data, it is necessary to monitor for changes in the available dbus services.
-		self._bus.add_signal_receiver(self._dbus_name_owner_changed, signal_name='NameOwnerChanged')
+		# Connect to localsettings
+		self._settings = self._create_settings(supported_settings, self._handlechangedsetting)
+
+		# Set timezone to user selected timezone
+		tz = self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/System/TimeZone')
+		environ['TZ'] = tz if tz else 'UTC'
 
 		self._evaluate_if_we_are_needed()
-		gobject.timeout_add(1000, self._handletimertick)
-		self._update_relay()
-		self._changed = True
+		gobject.timeout_add(1000, exit_on_error, self._handletimertick)
 
 	def _evaluate_if_we_are_needed(self):
 		if self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Function') == 1:
-			if not self._relay_state_import:
-				logger.info('Getting relay from systemcalc.')
-				try:
-					self._relay_state_import = VeDbusItemImport(
-						bus=self._bus, serviceName='com.victronenergy.system',
-						path='/Relay/0/State',
-						eventCallback=None, createsignal=True)
-				except dbus.exceptions.DBusException:
-					logger.info('Systemcalc relay not available.')
-					self._relay_state_import = None
-					pass
 
 			if self._dbusservice is None:
 				logger.info('Action! Going on dbus and taking control of the relay.')
 
-				relay_polarity_import = VeDbusItemImport(
-														 bus=self._bus, serviceName='com.victronenergy.settings',
-														 path='/Settings/Relay/Polarity',
-														 eventCallback=None, createsignal=True)
 				# As is not possible to keep the relay state during the CCGX power cycles,
 				# set the relay polarity to normally open.
-				if relay_polarity_import.get_value() == 1:
-					relay_polarity_import.set_value(0)
+				relay_polarity = self._dbusmonitor.get_item('com.victronenergy.settings', '/Settings/Relay/Polarity')
+				if relay_polarity.get_value() == 1:
+					relay_polarity.set_value(dbus.Int32(0, variant_level=1))
 					logger.info('Setting relay polarity to normally open.')
 
 				# put ourselves on the dbus
-				self._dbusservice = VeDbusService('com.victronenergy.generator.startstop0')
-				self._dbusservice.add_mandatory_paths(
-					processname=__file__,
-					processversion=softwareversion,
-					connection='generator',
-					deviceinstance=0,
-					productid=None,
-					productname=None,
-					firmwareversion=None,
-					hardwareversion=None,
-					connected=1)
+				self._dbusservice = self._create_dbus_service()
+
 				# State: None = invalid, 0 = stopped, 1 = running
 				self._dbusservice.add_path('/State', value=0)
 				# Condition that made the generator start
@@ -287,8 +281,8 @@ class DbusGenerator:
 				self._dbusservice.add_path('/TodayRuntime', value=0, gettextcallback=self._gettext)
 				# Test run runtime
 				self._dbusservice.add_path('/TestRunIntervalRuntime',
-										   value=self._interval_runtime(self._settings['testruninterval']),
-										   gettextcallback=self._gettext)
+											value=self._interval_runtime(self._settings['testruninterval']),
+											gettextcallback=self._gettext)
 				# Next tes trun date, values is 0 for test run disabled
 				self._dbusservice.add_path('/NextTestRun', value=None, gettextcallback=self._gettext)
 				# Next tes trun is needed 1, not needed 0
@@ -300,6 +294,7 @@ class DbusGenerator:
 				# Silent mode active
 				self._dbusservice.add_path('/QuietHours', value=0)
 				self._determineservices()
+				self._update_relay()
 
 		else:
 			if self._dbusservice is not None:
@@ -311,7 +306,6 @@ class DbusGenerator:
 					self._reset_condition(self._condition_stack[condition])
 				logger.info('Relay function is no longer set to generator start/stop: made sure generator is off ' +
 							'and now going off dbus')
-				self._relay_state_import = None
 
 	def _device_added(self, dbusservicename, instance):
 		self._evaluate_if_we_are_needed()
@@ -319,24 +313,23 @@ class DbusGenerator:
 
 	def _device_removed(self, dbusservicename, instance):
 		self._evaluate_if_we_are_needed()
-		# Relay handling depends on systemcalc, if the service disappears restart
-		# the relay state import
-		if dbusservicename == "com.victronenergy.system":
-			self._relay_state_import = None
 		self._determineservices()
 
 	def _dbus_value_changed(self, dbusServiceName, dbusPath, options, changes, deviceInstance):
 		if dbusPath == '/AutoSelectedBatteryMeasurement' and self._settings['batterymeasurement'] == 'default':
 			self._determineservices()
+
+		if dbusPath == '/VebusService':
+			self._determineservices()
+
 		if dbusPath == '/Settings/Relay/Function':
 			self._evaluate_if_we_are_needed()
-		self._changed = True
+
 		# Update relay state when polarity is changed
 		if dbusPath == '/Settings/Relay/Polarity':
 			self._update_relay()
 
-	def _handle_changed_setting(self, setting, oldvalue, newvalue):
-		self._changed = True
+	def _handlechangedsetting(self, setting, oldvalue, newvalue):
 		self._evaluate_if_we_are_needed()
 		if setting == 'batterymeasurement':
 			self._determineservices()
@@ -350,7 +343,7 @@ class DbusGenerator:
 				logger.info('Autostart function %s.' % ('enabled' if newvalue == 1 else 'disabled'))
 		if self._dbusservice is not None and setting == 'testruninterval':
 			self._dbusservice['/TestRunIntervalRuntime'] = self._interval_runtime(
-															   self._settings['testruninterval'])
+															self._settings['testruninterval'])
 
 	def _dbus_name_owner_changed(self, name, oldowner, newowner):
 		self._determineservices()
@@ -374,13 +367,13 @@ class DbusGenerator:
 		try:
 			if self._dbusservice is not None:
 				self._evaluate_startstop_conditions()
-			self._changed = False
 		except:
 			self._stop_generator()
 			import traceback
 			traceback.print_exc()
 			sys.exit(1)
 		return True
+
 
 	def _evaluate_startstop_conditions(self):
 
@@ -691,19 +684,22 @@ class DbusGenerator:
 		return summ
 
 	def _get_updated_values(self):
+		battery_service = self._battery_service if self._battery_service else ""
+		battery_prefix = self._battery_prefix if self._battery_prefix else ""
+		vebus_service = self._vebusservice if self._vebusservice else ""
 
 		values = {
-			'batteryvoltage': (self._battery_measurement_voltage_import.get_value()
-							   if self._battery_measurement_voltage_import else None),
-			'batterycurrent': (self._battery_measurement_current_import.get_value()
-							   if self._battery_measurement_current_import else None),
-			'soc': self._battery_measurement_soc_import.get_value() if self._battery_measurement_soc_import else None,
+			'batteryvoltage': self._dbusmonitor.get_value(battery_service, battery_prefix + "/Voltage"),
+			'batterycurrent': self._dbusmonitor.get_value(battery_service, battery_prefix + "/Current"),
+			'soc': self._dbusmonitor.get_value(battery_service, "/Soc"),
 			'acload': self._dbusmonitor.get_value('com.victronenergy.system', '/Ac/Consumption/Total/Power'),
-			'inverterhightemp': (self._vebusservice_high_temperature_import.get_value()
-								 if self._vebusservice_high_temperature_import else None),
-			'inverteroverload': (self._vebusservice_overload_import.get_value()
-								 if self._vebusservice_overload_import else None)
+			'inverterhightemp': self._dbusmonitor.get_value(vebus_service, "/Alarms/HighTemperature"),
+			'inverteroverload': self._dbusmonitor.get_value(vebus_service, "/Alarms/Overload")
 		}
+
+		# Invalidate acload if vebus is not available
+		if not self._vebusservice:
+			values['acload'] = None
 
 		if values['batterycurrent']:
 			values['batterycurrent'] *= -1
@@ -712,17 +708,17 @@ class DbusGenerator:
 
 	def _determineservices(self):
 		# batterymeasurement is either 'default' or 'com_victronenergy_battery_288/Dc/0'.
-		# In case it is set to default, we use the AutoSelected battery measurement, given by
-		# SystemCalc.
+		# In case it is set to default, we use the AutoSelected battery
+		# measurement, given by SystemCalc.
 		batterymeasurement = None
-		batteryservicename = None
 		newbatteryservice = None
 		batteryprefix = ""
 		selectedbattery = self._settings['batterymeasurement']
 		vebusservice = None
 
 		if selectedbattery == 'default':
-			batterymeasurement = self._dbusmonitor.get_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement')
+			batterymeasurement = self._dbusmonitor.get_value('com.victronenergy.system', 
+			'/AutoSelectedBatteryMeasurement')
 		elif len(selectedbattery.split("/", 1)) == 2:  # Only very basic sanity checking..
 			batterymeasurement = self._settings['batterymeasurement']
 		elif selectedbattery == 'nobattery':
@@ -735,115 +731,56 @@ class DbusGenerator:
 			batteryprefix = "/" + batterymeasurement.split("/", 1)[1]
 
 		# Get the current battery servicename
-		if self._battery_measurement_voltage_import:
-			oldservice = (self._battery_measurement_voltage_import.serviceName +
-						  self._battery_measurement_voltage_import.path.replace("/Voltage", ""))
+		if self._battery_service:
+			oldservice = self._battery_service
 		else:
 			oldservice = None
 
 		if batterymeasurement:
-			try:
-				batteryservicename = VeDbusItemImport(
-					bus=self._bus,
-					serviceName="com.victronenergy.system",
-					path='/ServiceMapping/' + batterymeasurement.split("/", 1)[0],
-					eventCallback=None,
-					createsignal=False)
+			battery_instance = int(batterymeasurement.split("_", 3)[3].split("/")[0])
+			newbatteryservice = self._get_servicename_by_instance(battery_instance)
 
-				if batteryservicename.get_value():
-					newbatteryservice = batteryservicename.get_value() + batteryprefix
-			except dbus.exceptions.DBusException:
-				pass
-			else:
-				newbatteryservice = None
-
-		if batteryservicename and batteryservicename.get_value():
-			self._battery_measurement_available = True
-
+		if newbatteryservice and newbatteryservice != oldservice:
+			if selectedbattery == 'nobattery':
+				logger.info('Battery monitoring disabled! Stop evaluating related conditions')
+				self._battery_service = None
+				self._battery_prefix = None
 			logger.info('Battery service we need (%s) found! Using it for generator start/stop'
 						% batterymeasurement)
-			try:
-				self._battery_measurement_voltage_import = VeDbusItemImport(
-					bus=self._bus, serviceName=batteryservicename.get_value(),
-					path=batteryprefix + '/Voltage', eventCallback=None, createsignal=True)
+			self._battery_service = newbatteryservice
+			self._battery_prefix = batteryprefix
+		elif not newbatteryservice and newbatteryservice != oldservice:
+			logger.info('Error getting battery service!')
+			self._battery_service = newbatteryservice
+			self._battery_prefix = batteryprefix
 
-				self._battery_measurement_current_import = VeDbusItemImport(
-					bus=self._bus, serviceName=batteryservicename.get_value(),
-					path=batteryprefix + '/Current', eventCallback=None, createsignal=True)
-
-				# Exception caused by Matthijs :), we forgot to batteryprefix the Soc during the big path-change...
-				self._battery_measurement_soc_import = VeDbusItemImport(
-					bus=self._bus, serviceName=batteryservicename.get_value(),
-					path='/Soc', eventCallback=None, createsignal=True)
-			except Exception:
-				logger.debug('Error getting battery service!')
-				self._battery_measurement_voltage_import = None
-				self._battery_measurement_current_import = None
-				self._battery_measurement_soc_import = None
-
-		elif selectedbattery == 'nobattery' and self._battery_measurement_available:
-			logger.info('Battery monitoring disabled! Stop evaluating related conditions')
-			self._battery_measurement_voltage_import = None
-			self._battery_measurement_current_import = None
-			self._battery_measurement_soc_import = None
-			self._battery_measurement_available = False
-
-		elif batteryservicename and batteryservicename.get_value() is None and self._battery_measurement_available:
-			logger.info('Battery service we need (%s) is not available! Stop evaluating related conditions'
-						% batterymeasurement)
-			self._battery_measurement_voltage_import = None
-			self._battery_measurement_current_import = None
-			self._battery_measurement_soc_import = None
-			self._battery_measurement_available = False
-
-		# Get the default VE.Bus service and import high temperature and overload warnings
-		try:
-			vebusservice = VeDbusItemImport(
-				bus=self._bus,
-				serviceName="com.victronenergy.system",
-				path='/VebusService',
-				eventCallback=None,
-				createsignal=False)
-
-			if vebusservice.get_value() and (vebusservice.get_value() != self._vebusservice
-											 or not self._vebusservice_available):
-				self._vebusservice = vebusservice.get_value()
-				self._vebusservice_available = True
-
+		# Get the default VE.Bus service
+		vebusservice = self._dbusmonitor.get_value('com.victronenergy.system', '/VebusService')
+		if vebusservice:
+			if self._vebusservice != vebusservice:
+				self._vebusservice = vebusservice
 				logger.info('Vebus service (%s) found! Using it for generator start/stop'
-							% vebusservice.get_value())
-
-				self._vebusservice_high_temperature_import = VeDbusItemImport(
-						bus=self._bus, serviceName=vebusservice.get_value(),
-						path='/Alarms/HighTemperature', eventCallback=None, createsignal=True)
-
-				self._vebusservice_overload_import = VeDbusItemImport(
-						bus=self._bus, serviceName=vebusservice.get_value(),
-						path='/Alarms/Overload', eventCallback=None, createsignal=True)
-		except Exception:
-			logger.info('Error getting Vebus service!')
-			self._vebusservice_available = False
-			self._vebusservice_high_temperature_import = None
-			self._vebusservice_overload_import = None
-
-			logger.info('Vebus service (%s) dissapeared! Stop evaluating related conditions'
+						% vebusservice)
+		else:
+			if self._vebusservice is not None:
+				logger.info('Vebus service (%s) dissapeared! Stop evaluating related conditions'
 							% self._vebusservice)
+			else:
+				logger.info('Error getting Vebus service!')
+			self._vebusservice = None
 
-		# Trigger an immediate check of system status
-		self._changed = True
+	def _get_servicename_by_instance(self, instance):
+		services = self._dbusmonitor.get_service_list()
+		sv = None
+		for i in services:
+			if services[i] == instance:
+				sv = i
+		return sv
 
 	def _start_generator(self, condition):
-		if not self._relay_state_import:
-			logger.info("Relay import not available, can't start generator by %s condition" % condition)
-			return
-
-		systemcalc_relay_state = 0
 		state = self._dbusservice['/State']
-
-		try:
-			systemcalc_relay_state = self._relay_state_import.get_value()
-		except dbus.exceptions.DBusException:
-			logger.info('Error getting relay state')
+		relay = self._dbusmonitor.get_item('com.victronenergy.system', '/Relay/0/State')
+		systemcalc_relay_state = relay.get_value()
 
 		# This function will start the generator in the case generator not
 		# already running. When differs, the RunningByCondition is updated
@@ -859,17 +796,9 @@ class DbusGenerator:
 		self._dbusservice['/RunningByCondition'] = condition
 
 	def _stop_generator(self):
-		if not self._relay_state_import:
-			logger.info("Relay import not available, can't stop generator")
-			return
-
-		systemcalc_relay_state = 1
 		state = self._dbusservice['/State']
-
-		try:
-			systemcalc_relay_state = self._relay_state_import.get_value()
-		except dbus.exceptions.DBusException:
-			logger.info('Error getting relay state')
+		relay = self._dbusmonitor.get_item('com.victronenergy.system', '/Relay/0/State')
+		systemcalc_relay_state = relay.get_value()
 
 		if state == 1 or systemcalc_relay_state != state:
 			self._dbusservice['/State'] = 0
@@ -885,18 +814,42 @@ class DbusGenerator:
 			self._last_runtime_update = 0
 
 	def _update_relay(self):
-		if not self._relay_state_import:
-			logger.info("Relay import not available")
-			return
+
 		# Relay polarity 0 = NO, 1 = NC
 		polarity = bool(self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Polarity'))
 		w = int(not polarity) if bool(self._dbusservice['/State']) else int(polarity)
+		self._dbusmonitor.get_item('com.victronenergy.system', '/Relay/0/State').set_value(dbus.Int32(w, variant_level=1))
 
-		try:
-			self._relay_state_import.set_value(dbus.Int32(w, variant_level=1))
-		except dbus.exceptions.DBusException:
-			logger.info('Error setting relay state')
+	def _create_dbus_monitor(self, *args, **kwargs):
+		raise Exception("This function should be overridden")
 
+	def _create_settings(self, *args, **kwargs):
+		raise Exception("This function should be overridden")
+
+	def _create_dbus_service(self):
+		raise Exception("This function should be overridden")
+
+class DbusGenerator(Generator):
+	def _create_dbus_monitor(self, *args, **kwargs):
+		return DbusMonitor(*args, **kwargs)
+
+	def _create_settings(self, *args, **kwargs):
+		bus = dbus.SessionBus() if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else dbus.SystemBus()
+		return SettingsDevice(bus, *args, timeout=10, **kwargs)
+
+	def _create_dbus_service(self):
+		dbusservice = VeDbusService('com.victronenergy.generator.startstop0')
+		dbusservice.add_mandatory_paths(
+			processname=__file__,
+			processversion=softwareversion,
+			connection='generator',
+			deviceinstance=0,
+			productid=None,
+			productname=None,
+			firmwareversion=None,
+			hardwareversion=None,
+			connected=1)
+		return dbusservice
 
 if __name__ == '__main__':
 	# Argument parsing
@@ -906,7 +859,6 @@ if __name__ == '__main__':
 
 	parser.add_argument('-d', '--debug', help='set logging level to debug',
 						action='store_true')
-	parser.add_argument('-r', '--retries', help='Retries on error', default=300, type=int)
 
 	args = parser.parse_args()
 
@@ -916,7 +868,7 @@ if __name__ == '__main__':
 	# Have a mainloop, so we can send/receive asynchronous calls to and from dbus
 	DBusGMainLoop(set_as_default=True)
 
-	generator = DbusGenerator(args.retries)
+	generator = DbusGenerator()
 	# Start and run the mainloop
 	mainloop = gobject.MainLoop()
 	mainloop.run()
