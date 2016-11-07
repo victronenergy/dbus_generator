@@ -124,6 +124,16 @@ class Generator:
 				'enabled': False,
 				'retries': 0,
 				'monitoring': 'battery'
+			},
+			'stoponac1': {
+				'name': 'stoponac1',
+				'reached': False,
+				'boolean': True,
+				'timed': False,
+				'valid': True,
+				'enabled': False,
+				'retries': 0,
+				'monitoring': 'vebus'
 			}
 		}
 
@@ -152,6 +162,8 @@ class Generator:
 				'/Ac/Out/L2/P': dummy,
 				'/Ac/Out/L3/P': dummy,
 				'/Ac/Out/P': dummy,
+				'/Ac/ActiveIn/ActiveInput': dummy,
+				'/Ac/ActiveIn/Connected': dummy,
 				'/Dc/0/Voltage': dummy,
 				'/Dc/0/Current': dummy,
 				'/Dc/1/Voltage': dummy,
@@ -190,6 +202,7 @@ class Generator:
 				'accumulatedtotal': ['/Settings/Generator0/AccumulatedTotal', 0, 0, 0],
 				'batterymeasurement': ['/Settings/Generator0/BatteryService', 'default', 0, 0],
 				'minimumruntime': ['/Settings/Generator0/MinimumRuntime', 0, 0, 86400],  # minutes
+				'stoponac1enabled': ['/Settings/Generator0/StopWhenAc1Available', 0, 0, 10],
 				# On permanent loss of communication: 0 = Stop, 1 = Start, 2 = keep running
 				'onlosscommunication': ['/Settings/Generator0/OnLossCommunication', 0, 0, 2],
 				# Quiet hours
@@ -379,9 +392,10 @@ class Generator:
 	def _evaluate_startstop_conditions(self):
 
 		# Conditions will be evaluated in this order
-		conditions = ['soc', 'acload', 'batterycurrent', 'batteryvoltage', 'inverterhightemp', 'inverteroverload']
+		conditions = ['soc', 'acload', 'batterycurrent', 'batteryvoltage', 'inverterhightemp', 'inverteroverload', 'stoponac1']
 		start = False
-		runningbycondition = None
+		startbycondition = None
+		activecondition = self._dbusservice['/RunningByCondition']
 		today = calendar.timegm(datetime.date.today().timetuple())
 		self._timer_runnning = False
 		values = self._get_updated_values()
@@ -404,24 +418,29 @@ class Generator:
 				self._update_accumulated_time()
 
 		if self._evaluate_manual_start():
-			runningbycondition = 'manual'
+			startbycondition = 'manual'
 			start = True
 
 		# Autostart conditions will only be evaluated if the autostart functionality is enabled
 		if self._settings['autostart'] == 1:
 
 			if self._evaluate_testrun_condition():
-				runningbycondition = 'testrun'
+				startbycondition = 'testrun'
 				start = True
 
 			# Evaluate value conditions
 			for condition in conditions:
 				start = self._evaluate_condition(self._condition_stack[condition], values[condition]) or start
-				runningbycondition = condition if start and runningbycondition is None else runningbycondition
+				startbycondition = condition if start and startbycondition is None else startbycondition
 				# Connection lost is set to true if the numbear of retries of one or more enabled conditions
 				# >= RETRIES_ON_ERROR
 				if self._condition_stack[condition]['enabled']:
 					connection_lost = self._condition_stack[condition]['retries'] >= self.RETRIES_ON_ERROR
+
+			if self._condition_stack['stoponac1']['reached'] and startbycondition not in ['manual', 'testrun']:
+				start = False
+				if self._dbusservice['/State'] == 1 and activecondition not in ['manual', 'testrun']:
+					logger.info('AC input 1 available, stopping')
 
 			# If none condition is reached check if connection is lost and start/keep running the generator
 			# depending on '/OnLossCommunication' setting
@@ -429,16 +448,16 @@ class Generator:
 				# Start always
 				if self._settings['onlosscommunication'] == 1:
 					start = True
-					runningbycondition = 'lossofcommunication'
+					startbycondition = 'lossofcommunication'
 				# Keep running if generator already started
 				if self._dbusservice['/State'] == 1 and self._settings['onlosscommunication'] == 2:
 					start = True
-					runningbycondition = 'lossofcommunication'
+					startbycondition = 'lossofcommunication'
 
 		if start:
-			self._start_generator(runningbycondition)
+			self._start_generator(startbycondition)
 		elif (self._dbusservice['/Runtime'] >= self._settings['minimumruntime'] * 60
-			  or self._dbusservice['/RunningByCondition'] == 'manual'):
+			  or activecondition == 'manual'):
 			self._stop_generator()
 
 	def _reset_condition(self, condition):
@@ -713,6 +732,15 @@ class Generator:
 		# Highest phase load
 		if self._settings['acloadmeasuerment'] == 2:
 			values['acload'] = max(loadOnAcOut)
+
+		# AC input 1
+		activein = self._dbusmonitor.get_value(vebus_service, '/Ac/ActiveIn/ActiveInput')
+		# Active input is connected
+		connected = self._dbusmonitor.get_value(vebus_service, '/Ac/ActiveIn/Connected')
+		if None not in (activein, connected):
+			values['stoponac1'] = activein == 0 and connected == 1
+		else:
+			values['stoponac1'] = None
 
 		# Invalidate if vebus is not available
 		if loadOnAcOut[0] == None:
