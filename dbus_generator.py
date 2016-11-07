@@ -53,7 +53,6 @@ class Generator:
 		self._battery_service = None
 		self._battery_prefix = None
 		self._vebusservice = None
-		self._vebusservice_available = False
 
 		self._condition_stack = {
 			'batteryvoltage': {
@@ -189,7 +188,7 @@ class Generator:
 				'stopwhengridavailable': ['/Settings/Generator0/StopWhenGridAvailable', 0, 0, 0],
 				'accumulateddaily': ['/Settings/Generator0/AccumulatedDaily', '', 0, 0],
 				'accumulatedtotal': ['/Settings/Generator0/AccumulatedTotal', 0, 0, 0],
-				'batterymeasurement': ['/Settings/Generator0/BatteryService', "default", 0, 0],
+				'batterymeasurement': ['/Settings/Generator0/BatteryService', 'default', 0, 0],
 				'minimumruntime': ['/Settings/Generator0/MinimumRuntime', 0, 0, 86400],  # minutes
 				# On permanent loss of communication: 0 = Stop, 1 = Start, 2 = keep running
 				'onlosscommunication': ['/Settings/Generator0/OnLossCommunication', 0, 0, 2],
@@ -221,6 +220,8 @@ class Generator:
 				'qh_batterycurrentstop': ['/Settings/Generator0/BatteryCurrent/QuietHoursStopValue', 15.5, 0, 10000],
 				# AC load
 				'acloadenabled': ['/Settings/Generator0/AcLoad/Enabled', 0, 0, 1],
+				# Measuerement, 0 = Total AC consumption, 1 = AC on inverter output, 2 = Single phase
+				'acloadmeasuerment': ['/Settings/Generator0/AcLoad/Measurement', 0, 0, 100],
 				'acloadstart': ['/Settings/Generator0/AcLoad/StartValue', 1600, 5, 100000],
 				'acloadstop': ['/Settings/Generator0/AcLoad/StopValue', 800, 0, 100000],
 				'acloadstarttimer': ['/Settings/Generator0/AcLoad/StartTimer', 20, 0, 10000],
@@ -684,21 +685,37 @@ class Generator:
 		return summ
 
 	def _get_updated_values(self):
-		battery_service = self._battery_service if self._battery_service else ""
-		battery_prefix = self._battery_prefix if self._battery_prefix else ""
-		vebus_service = self._vebusservice if self._vebusservice else ""
+		battery_service = self._battery_service if self._battery_service else ''
+		battery_prefix = self._battery_prefix if self._battery_prefix else ''
+		vebus_service = self._vebusservice if self._vebusservice else ''
+		system_service = 'com.victronenergy.system'
+		loadOnAcOut = []
 
 		values = {
-			'batteryvoltage': self._dbusmonitor.get_value(battery_service, battery_prefix + "/Voltage"),
-			'batterycurrent': self._dbusmonitor.get_value(battery_service, battery_prefix + "/Current"),
-			'soc': self._dbusmonitor.get_value(battery_service, "/Soc"),
-			'acload': self._dbusmonitor.get_value('com.victronenergy.system', '/Ac/Consumption/Total/Power'),
-			'inverterhightemp': self._dbusmonitor.get_value(vebus_service, "/Alarms/HighTemperature"),
-			'inverteroverload': self._dbusmonitor.get_value(vebus_service, "/Alarms/Overload")
+			'batteryvoltage': self._dbusmonitor.get_value(battery_service, battery_prefix + '/Voltage'),
+			'batterycurrent': self._dbusmonitor.get_value(battery_service, battery_prefix + '/Current'),
+			'soc': self._dbusmonitor.get_value(battery_service, '/Soc'),
+			'inverterhightemp': self._dbusmonitor.get_value(vebus_service, '/Alarms/HighTemperature'),
+			'inverteroverload': self._dbusmonitor.get_value(vebus_service, '/Alarms/Overload')
 		}
 
-		# Invalidate acload if vebus is not available
-		if not self._vebusservice:
+		for phase in ['L1', 'L2', 'L3']:
+			loadOnAcOut.append(self._dbusmonitor.get_value(vebus_service, ('/Ac/Out/%s/P' % phase)))
+
+		# Toltal consumption
+		if self._settings['acloadmeasuerment'] == 0:
+			values['acload'] = self._dbusmonitor.get_value(system_service, '/Ac/Consumption/Total/Power')
+
+		# Load on inverter AC out
+		if self._settings['acloadmeasuerment'] == 1:
+			values['acload'] = sum(filter(None, loadOnAcOut))
+
+		# Highest phase load
+		if self._settings['acloadmeasuerment'] == 2:
+			values['acload'] = max(loadOnAcOut)
+
+		# Invalidate if vebus is not available
+		if loadOnAcOut[0] == None:
 			values['acload'] = None
 
 		if values['batterycurrent']:
@@ -712,14 +729,14 @@ class Generator:
 		# measurement, given by SystemCalc.
 		batterymeasurement = None
 		newbatteryservice = None
-		batteryprefix = ""
+		batteryprefix = ''
 		selectedbattery = self._settings['batterymeasurement']
 		vebusservice = None
 
 		if selectedbattery == 'default':
 			batterymeasurement = self._dbusmonitor.get_value('com.victronenergy.system', 
 			'/AutoSelectedBatteryMeasurement')
-		elif len(selectedbattery.split("/", 1)) == 2:  # Only very basic sanity checking..
+		elif len(selectedbattery.split('/', 1)) == 2:  # Only very basic sanity checking..
 			batterymeasurement = self._settings['batterymeasurement']
 		elif selectedbattery == 'nobattery':
 			batterymeasurement = None
@@ -728,7 +745,7 @@ class Generator:
 			pass
 
 		if batterymeasurement:
-			batteryprefix = "/" + batterymeasurement.split("/", 1)[1]
+			batteryprefix = '/' + batterymeasurement.split('/', 1)[1]
 
 		# Get the current battery servicename
 		if self._battery_service:
@@ -737,7 +754,7 @@ class Generator:
 			oldservice = None
 
 		if batterymeasurement:
-			battery_instance = int(batterymeasurement.split("_", 3)[3].split("/")[0])
+			battery_instance = int(batterymeasurement.split('_', 3)[3].split('/')[0])
 			newbatteryservice = self._get_servicename_by_instance(battery_instance)
 
 		if newbatteryservice and newbatteryservice != oldservice:
@@ -821,13 +838,13 @@ class Generator:
 		self._dbusmonitor.get_item('com.victronenergy.system', '/Relay/0/State').set_value(dbus.Int32(w, variant_level=1))
 
 	def _create_dbus_monitor(self, *args, **kwargs):
-		raise Exception("This function should be overridden")
+		raise Exception('This function should be overridden')
 
 	def _create_settings(self, *args, **kwargs):
-		raise Exception("This function should be overridden")
+		raise Exception('This function should be overridden')
 
 	def _create_dbus_service(self):
-		raise Exception("This function should be overridden")
+		raise Exception('This function should be overridden')
 
 class DbusGenerator(Generator):
 	def _create_dbus_monitor(self, *args, **kwargs):
