@@ -111,7 +111,6 @@ class TestGenerator(TestGeneratorBase):
 		self._add_device('com.victronenergy.system',
 			product_name='SystemCalc',
 			values={
-				'/Ac/Consumption/Total/Power': 1500,
 				'/Ac/Consumption/L1/Power': 650,
 				'/Ac/Consumption/L2/Power': 650,
 				'/Ac/Consumption/L3/Power': 650,
@@ -166,7 +165,10 @@ class TestGenerator(TestGeneratorBase):
 		self._service = self._generator_._dbusservice
 
 	def test_acload_consumption(self):
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/Total/Power', 2600)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L1/Power', 1900)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L2/Power', 100)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L3/Power', 600)
+		
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 0)
 		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 2600)
@@ -388,7 +390,9 @@ class TestGenerator(TestGeneratorBase):
 		})
 
 	def test_comm_failure(self):
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/Total/Power', 2600)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L1/Power', 1900)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L2/Power', 100)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L3/Power', 600)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 0)
 		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 1600)
@@ -416,7 +420,9 @@ class TestGenerator(TestGeneratorBase):
 		})
 
 	def test_comm_failure_continue_running(self):
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/Total/Power', 2600)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L1/Power', 1900)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L2/Power', 100)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L3/Power', 600)
 		self._set_setting('/Settings/Generator0/OnLossCommunication', 2)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 0)
@@ -444,7 +450,9 @@ class TestGenerator(TestGeneratorBase):
 		})
 
 	def test_comm_failure_start(self):
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/Total/Power', 100)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L1/Power', 50)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L2/Power', 25)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L3/Power', 25)
 		self._set_setting('/Settings/Generator0/OnLossCommunication', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 0)

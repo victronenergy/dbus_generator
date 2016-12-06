@@ -709,6 +709,7 @@ class Generator:
 		vebus_service = self._vebusservice if self._vebusservice else ''
 		system_service = 'com.victronenergy.system'
 		loadOnAcOut = []
+		totalConsumption = []
 
 		values = {
 			'batteryvoltage': self._dbusmonitor.get_value(battery_service, battery_prefix + '/Voltage'),
@@ -720,10 +721,11 @@ class Generator:
 
 		for phase in ['L1', 'L2', 'L3']:
 			loadOnAcOut.append(self._dbusmonitor.get_value(vebus_service, ('/Ac/Out/%s/P' % phase)))
+			totalConsumption.append(self._dbusmonitor.get_value(system_service, ('/Ac/Consumption/%s/Power' % phase)))
 
 		# Toltal consumption
 		if self._settings['acloadmeasuerment'] == 0:
-			values['acload'] = self._dbusmonitor.get_value(system_service, '/Ac/Consumption/Total/Power')
+			values['acload'] = sum(filter(None, totalConsumption))
 
 		# Load on inverter AC out
 		if self._settings['acloadmeasuerment'] == 1:
