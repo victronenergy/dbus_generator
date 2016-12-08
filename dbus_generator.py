@@ -262,58 +262,55 @@ class Generator:
 
 	def _evaluate_if_we_are_needed(self):
 		if self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Function') == 1:
-			if self._dbusmonitor.get_item('com.victronenergy.system', '/Relay/0/State') is None:
-				logger.info('Systemcalc is not available yet, waiting...')
 
-				if self._dbusservice is None:
-					logger.info('Action! Going on dbus and taking control of the relay.')
+			if self._dbusservice is None:
+				logger.info('Action! Going on dbus and taking control of the relay.')
 
-				else:
-					# As is not possible to keep the relay state during the CCGX power cycles,
-					# set the relay polarity to normally open.
-					relay_polarity = self._dbusmonitor.get_item('com.victronenergy.settings', '/Settings/Relay/Polarity')
-					if relay_polarity.get_value() == 1:
-						relay_polarity.set_value(dbus.Int32(0, variant_level=1))
-						logger.info('Setting relay polarity to normally open.')
+				# As is not possible to keep the relay state during the CCGX power cycles,
+				# set the relay polarity to normally open.
+				relay_polarity = self._dbusmonitor.get_item('com.victronenergy.settings', '/Settings/Relay/Polarity')
+				if relay_polarity.get_value() == 1:
+					relay_polarity.set_value(dbus.Int32(0, variant_level=1))
+					logger.info('Setting relay polarity to normally open.')
 
-					# put ourselves on the dbus
-					self._dbusservice = self._create_dbus_service()
+				# put ourselves on the dbus
+				self._dbusservice = self._create_dbus_service()
 
-					# State: None = invalid, 0 = stopped, 1 = running
-					self._dbusservice.add_path('/State', value=0)
-					# Condition that made the generator start
-					self._dbusservice.add_path('/RunningByCondition', value='')
-					# Runtime
-					self._dbusservice.add_path('/Runtime', value=0, gettextcallback=self._gettext)
-					# Today runtime
-					self._dbusservice.add_path('/TodayRuntime', value=0, gettextcallback=self._gettext)
-					# Test run runtime
-					self._dbusservice.add_path('/TestRunIntervalRuntime',
-												value=self._interval_runtime(self._settings['testruninterval']),
-												gettextcallback=self._gettext)
-					# Next tes trun date, values is 0 for test run disabled
-					self._dbusservice.add_path('/NextTestRun', value=None, gettextcallback=self._gettext)
-					# Next tes trun is needed 1, not needed 0
-					self._dbusservice.add_path('/SkipTestRun', value=None)
-					# Manual start
-					self._dbusservice.add_path('/ManualStart', value=0, writeable=True)
-					# Manual start timer
-					self._dbusservice.add_path('/ManualStartTimer', value=0, writeable=True)
-					# Silent mode active
-					self._dbusservice.add_path('/QuietHours', value=0)
-					self._determineservices()
-					self._update_relay()
+				# State: None = invalid, 0 = stopped, 1 = running
+				self._dbusservice.add_path('/State', value=0)
+				# Condition that made the generator start
+				self._dbusservice.add_path('/RunningByCondition', value='')
+				# Runtime
+				self._dbusservice.add_path('/Runtime', value=0, gettextcallback=self._gettext)
+				# Today runtime
+				self._dbusservice.add_path('/TodayRuntime', value=0, gettextcallback=self._gettext)
+				# Test run runtime
+				self._dbusservice.add_path('/TestRunIntervalRuntime',
+											value=self._interval_runtime(self._settings['testruninterval']),
+											gettextcallback=self._gettext)
+				# Next tes trun date, values is 0 for test run disabled
+				self._dbusservice.add_path('/NextTestRun', value=None, gettextcallback=self._gettext)
+				# Next tes trun is needed 1, not needed 0
+				self._dbusservice.add_path('/SkipTestRun', value=None)
+				# Manual start
+				self._dbusservice.add_path('/ManualStart', value=0, writeable=True)
+				# Manual start timer
+				self._dbusservice.add_path('/ManualStartTimer', value=0, writeable=True)
+				# Silent mode active
+				self._dbusservice.add_path('/QuietHours', value=0)
+				self._determineservices()
+				self._update_relay()
 
-			else:
-				if self._dbusservice is not None:
-					self._stop_generator()
-					self._dbusservice.__del__()
-					self._dbusservice = None
-					# Reset conditions
-					for condition in self._condition_stack:
-						self._reset_condition(self._condition_stack[condition])
-					logger.info('Relay function is no longer set to generator start/stop: made sure generator is off ' +
-								'and now going off dbus')
+		else:
+			if self._dbusservice is not None:
+				self._stop_generator()
+				self._dbusservice.__del__()
+				self._dbusservice = None
+				# Reset conditions
+				for condition in self._condition_stack:
+					self._reset_condition(self._condition_stack[condition])
+				logger.info('Relay function is no longer set to generator start/stop: made sure generator is off ' +
+							'and now going off dbus')
 
 	def _device_added(self, dbusservicename, instance):
 		self._evaluate_if_we_are_needed()
