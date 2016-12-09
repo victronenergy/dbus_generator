@@ -403,13 +403,16 @@ class Generator:
 			self._update_accumulated_time()
 
 		# Update current and accumulated runtime.
+		# By performance reasons, accumulated runtime is only updated
+		# once per 60s. When the generator stops is also updated.
 		if self._dbusservice['/State'] == 1:
 			mtime = monotonic_time.monotonic_time().to_seconds_double()
-			self._dbusservice['/Runtime'] = int(mtime - self._starttime)
-			# By performance reasons, accumulated runtime is only updated
-			# once per 10s. When the generator stops is also updated.
-			if self._dbusservice['/Runtime'] - self._last_runtime_update >= 10:
+			if (mtime - self._starttime) - self._last_runtime_update >= 60:
+				self._dbusservice['/Runtime'] = int(mtime - self._starttime)
 				self._update_accumulated_time()
+			elif self._last_runtime_update == 0:
+				self._dbusservice['/Runtime'] = int(mtime - self._starttime)
+
 
 		if self._evaluate_manual_start():
 			startbycondition = 'manual'
