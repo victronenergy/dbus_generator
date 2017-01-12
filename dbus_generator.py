@@ -337,6 +337,10 @@ class Generator:
 		if dbusPath == '/Settings/Relay/Polarity':
 			self._update_relay()
 
+		# Update env timezone when setting changes
+		if dbusPath == '/Settings/System/TimeZone':
+			environ['TZ'] = changes['Value'] if changes['Value'] else 'UTC'
+
 	def _handlechangedsetting(self, setting, oldvalue, newvalue):
 		self._evaluate_if_we_are_needed()
 		if setting == 'batterymeasurement':
