@@ -161,15 +161,21 @@ class Generator:
 				'/Ac/Out/L1/P': dummy,
 				'/Ac/Out/L2/P': dummy,
 				'/Ac/Out/L3/P': dummy,
+				'/Alarms/L1/Overload': dummy,
+				'/Alarms/L2/Overload': dummy,
+				'/Alarms/L3/Overload': dummy,
+				'/Alarms/L1/HighTemperature': dummy,
+				'/Alarms/L2/HighTemperature': dummy,
+				'/Alarms/L3/HighTemperature': dummy,
+				'/Alarms/HighTemperature': dummy,
+				'/Alarms/Overload': dummy,
 				'/Ac/ActiveIn/ActiveInput': dummy,
 				'/Ac/ActiveIn/Connected': dummy,
 				'/Dc/0/Voltage': dummy,
 				'/Dc/0/Current': dummy,
 				'/Dc/1/Voltage': dummy,
 				'/Dc/1/Current': dummy,
-				'/Soc': dummy,
-				'/Alarms/HighTemperature': dummy,
-				'/Alarms/Overload': dummy
+				'/Soc': dummy
 				},
 			'com.victronenergy.system': {
 				'/Ac/Consumption/L1/Power': dummy,
@@ -711,6 +717,8 @@ class Generator:
 		system_service = 'com.victronenergy.system'
 		loadOnAcOut = []
 		totalConsumption = []
+		inverterHighTemp = []
+		inverterOverload = []
 
 		values = {
 			'batteryvoltage': self._dbusmonitor.get_value(battery_service, battery_prefix + '/Voltage'),
@@ -723,6 +731,9 @@ class Generator:
 		for phase in ['L1', 'L2', 'L3']:
 			loadOnAcOut.append(self._dbusmonitor.get_value(vebus_service, ('/Ac/Out/%s/P' % phase)))
 			totalConsumption.append(self._dbusmonitor.get_value(system_service, ('/Ac/Consumption/%s/Power' % phase)))
+			inverterHighTemp.append(self._dbusmonitor.get_value(vebus_service, ('/Alarms/%s/HighTemperature' % phase)))
+			inverterOverload.append(self._dbusmonitor.get_value(vebus_service, ('/Alarms/%s/Overload' % phase)))
+
 
 		# Toltal consumption
 		if self._settings['acloadmeasuerment'] == 0:
@@ -751,6 +762,15 @@ class Generator:
 
 		if values['batterycurrent']:
 			values['batterycurrent'] *= -1
+
+		# When multi is connected to CAN-bus, alarms are published to
+		# /Alarms/Overload... but when connected to vebus alarms are
+		# splitted in three phases and published to /Alarms/LX/Overload...
+		if values['inverteroverload'] == None:
+			values['inverteroverload'] = max(inverterOverload)
+
+		if values['inverterhightemp'] == None:
+			values['inverterhightemp'] = max(inverterHighTemp)
 
 		return values
 

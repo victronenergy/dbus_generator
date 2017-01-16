@@ -136,8 +136,14 @@ class TestGenerator(TestGeneratorBase):
 			values={
 				'/Dc/0/Voltage': 14.4,
 				'/Dc/0/Current': 10,
-				'/Alarms/Overload': 0,
-				'/Alarms/HighTemperature': 0,
+				'/Alarms/Overload': None,
+				'/Alarms/HighTemperature': None,
+				'/Alarms/L1/Overload': 0,
+				'/Alarms/L2/Overload': 0,
+				'/Alarms/L3/Overload': 0,
+				'/Alarms/L1/HighTemperature': 0,
+				'/Alarms/L2/HighTemperature': 0,
+				'/Alarms/L3/HighTemperature': 0,
 				'/Ac/Out/L1/P': 500,
 				'/Ac/Out/L2/P': 500,
 				'/Ac/Out/L3/P': 500,
@@ -243,10 +249,10 @@ class TestGenerator(TestGeneratorBase):
 			'/State': 1
 		})
 
-	def test_overload_alarm(self):
+	def test_overload_alarm_vebus(self):
 		self._set_setting('/Settings/Generator0/InverterOverload/Enabled', 1)
 		self._set_setting('/Settings/Generator0/InverterOverload/StartTimer', 0)
-		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/Overload', 1)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/L3/Overload', 1)
 
 		self._update_values()
 		self._check_values({
@@ -254,15 +260,45 @@ class TestGenerator(TestGeneratorBase):
 			'/RunningByCondition': 'inverteroverload'
 		})
 
-	def test_hightemp_alarm(self):
+	def test_hightemp_alarm_vebus(self):
 		self._set_setting('/Settings/Generator0/InverterHighTemp/Enabled', 1)
 		self._set_setting('/Settings/Generator0/InverterHighTemp/StartTimer', 0)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/L1/HighTemperature', 1)
+
+		self._update_values()
+		self._check_values({
+			'/State': 1,
+			'/RunningByCondition': 'inverterhightemp'
+		})
+
+	def test_hightemp_alarm_canbus(self):
+		self._set_setting('/Settings/Generator0/InverterHighTemp/Enabled', 1)
+		self._set_setting('/Settings/Generator0/InverterHighTemp/StartTimer', 0)
+		# Multi connected to CAN-bus, doesn't have per-phase alarm paths, invalidate.
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/L1/HighTemperature', None)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/L2/HighTemperature', None)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/L3/HighTemperature', None)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/HighTemperature', 1)
 
 		self._update_values()
 		self._check_values({
 			'/State': 1,
 			'/RunningByCondition': 'inverterhightemp'
+		})
+
+	def test_overload_alarm_canbus(self):
+		self._set_setting('/Settings/Generator0/InverterOverload/Enabled', 1)
+		self._set_setting('/Settings/Generator0/InverterOverload/StartTimer', 0)
+		# Multi connected to CAN-bus, doesn't have per-phase alarm paths, invalidate.
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/L1/Overload', None)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/L2/Overload', None)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/L3/Overload', None)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/Overload', 1)
+
+		self._update_values()
+		self._check_values({
+			'/State': 1,
+			'/RunningByCondition': 'inverteroverload'
 		})
 
 	def test_ac_highest_phase(self):
