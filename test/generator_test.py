@@ -136,7 +136,17 @@ class TestGenerator(TestGeneratorBase):
 		self._add_device('com.victronenergy.settings',
 			values={
 				'/Settings/Relay/Function': 1,
-				'/Settings/System/TimeZone': 'Europe/Berlin'
+				'/Settings/System/TimeZone': 'Europe/Berlin',
+				'/Settings/Services/FischerPandaAutoStartStop': 1
+			})
+
+		self._add_device('com.victronenergy.genset.socketcan_can1_di0_uc0',
+			values={
+				'/Start': 0,
+				'/AutoStart': 1,
+				'/Connected': 1,
+				'/ProductId': 0xB040,
+				'/ErrorCode': 0
 			})
 
 		self._add_device('com.victronenergy.vebus.ttyO1',
@@ -251,6 +261,75 @@ class TestGenerator(TestGeneratorBase):
 		self._update_values()
 		self._check_values({
 			'/Generator0/State': States.RUNNING
+		})
+
+	def test_remote_error(self):
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/P', 2100)
+		self._set_setting('/Settings/FischerPanda0/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/FischerPanda0/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/FischerPanda0/AcLoad/StartValue', 2200)
+		self._set_setting('/Settings/FischerPanda0/AcLoad/StopValue', 800)
+		self._set_setting('/Settings/FischerPanda0/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/FischerPanda0/AcLoad/StopTimer', 0)
+
+		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/ErrorCode', 0)
+		self._update_values()
+		self._check_values({
+			'/FischerPanda0/State': States.STOPPED
+		})
+		self._set_setting('/Settings/FischerPanda0/AcLoad/StartValue', 1650)
+		self._update_values()
+		self._check_values({
+			'/FischerPanda0/State': States.RUNNING
+		})
+		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/ErrorCode', 17)
+		self._update_values()
+		self._check_values({
+			'/FischerPanda0/State': States.ERROR,
+			'/FischerPanda0/Error': Errors.REMOTEINFAULT
+		})
+		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/ErrorCode', 0)
+		self._update_values()
+		self._check_values({
+			'/FischerPanda0/State': States.RUNNING
+		})
+
+	def test_fischerpanda_autostart_disabled(self):
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/P', 2100)
+		self._set_setting('/Settings/FischerPanda0/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/FischerPanda0/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/FischerPanda0/AcLoad/StartValue', 2200)
+		self._set_setting('/Settings/FischerPanda0/AcLoad/StopValue', 800)
+		self._set_setting('/Settings/FischerPanda0/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/FischerPanda0/AcLoad/StopTimer', 0)
+
+		self._update_values()
+		self._check_values({
+			'/FischerPanda0/State': States.STOPPED
+		})
+		self._set_setting('/Settings/FischerPanda0/AcLoad/StartValue', 1650)
+		self._update_values()
+		self._check_values({
+			'/FischerPanda0/State': States.RUNNING
+		})
+
+		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/AutoStart', 0)
+		self._update_values()
+		self._check_values({
+			'/FischerPanda0/State': States.ERROR,
+			'/FischerPanda0/Error': Errors.REMOTEDISABLED
+		})
+		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/AutoStart', 1)
+		self._update_values()
+		self._check_values({
+			'/FischerPanda0/State': States.RUNNING,
+			'/FischerPanda0/Error': Errors.NONE
 		})
 
 	def test_overload_alarm_vebus(self):

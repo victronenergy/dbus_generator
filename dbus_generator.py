@@ -19,6 +19,7 @@ import logging
 from gen_utils import dummy
 import time
 import relay
+import fischerpanda
 
 softwareversion = '1.3.6'
 
@@ -26,7 +27,7 @@ class Generator:
 	def __init__(self):
 		self._exit = False
 		self._instances = {}
-		self._modules = [relay]
+		self._modules = [relay, fischerpanda]
 
 		# Common dbus services/path
 		commondbustree = {
@@ -202,9 +203,9 @@ class Generator:
 		if "/Settings/Relay/Function" in dbusPath:
 			self._handle_builtin_relay(dbusPath)
 
-		# Some devices doesn't disappear from dbus when disconnected so check
-		# '/Connected' value to add or remove start/stop instance for that device
-
+		# Some devices like Fischer Panda gensets doesn't disappear from dbus
+		# when disconnected so check '/Connected' value to add or remove start/stop
+		# for that device
 		if dbusPath == "/Connected":
 			if self._dbusmonitor.get_value(dbusServiceName, dbusPath) == 0:
 				self._remove_device(dbusServiceName)
