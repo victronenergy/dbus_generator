@@ -139,7 +139,9 @@ class Generator:
 			'testruninterval': ['/Settings/{0}/TestRun/Interval', 28, 1, 365],
 			'testrunruntime': ['/Settings/{0}/TestRun/Duration', 7200, 1, 86400],
 			'testrunskipruntime': ['/Settings/{0}/TestRun/SkipRuntime', 0, 0, 100000],
-			'testruntillbatteryfull': ['/Settings/{0}/TestRun/RunTillBatteryFull', 0, 0, 1]
+			'testruntillbatteryfull': ['/Settings/{0}/TestRun/RunTillBatteryFull', 0, 0, 1],
+			# Alarms
+			'nogeneratoratacinalarm': ['/Settings/{0}/Alarms/NoGeneratorAtAcIn', 0, 0, 1]
 			}
 
 		settings = {}

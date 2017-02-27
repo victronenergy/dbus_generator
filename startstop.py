@@ -53,6 +53,11 @@ class StartStop:
 		self._vebusservice = None
 		self._errorstate = 0
 
+		self._acpower_inverter_input = {
+			'timeout': 0,
+			'unabletostart': False
+			}
+
 		self._condition_stack = {
 			'batteryvoltage': {
 				'name': 'batteryvoltage',
@@ -172,6 +177,8 @@ class StartStop:
 		self._dbusservice.add_path('/ManualStartTimer', value=None, writeable=True)
 		# Silent mode active
 		self._dbusservice.add_path('/QuietHours', value=None)
+		# Alarms
+		self._dbusservice.add_path('/Alarms/NoGeneratorAtAcIn', value=None)
 
 		# We need to set the values after creating the paths to trigger the 'onValueChanged' event for the gui
 		# otherwise the gui will report the paths as invalid if we remove and recreate the paths without
@@ -223,6 +230,7 @@ class StartStop:
 		self._dbusservice.__delitem__('/ManualStart')
 		self._dbusservice.__delitem__('/ManualStartTimer')
 		self._dbusservice.__delitem__('/QuietHours')
+		self._dbusservice.__delitem__('/Alarms/NoGeneratorAtAcIn')
 
 	def device_added(self, dbusservicename, instance):
 		self._determineservices()
@@ -303,6 +311,7 @@ class StartStop:
 			return
 		self._check_remote_status()
 		self._evaluate_startstop_conditions()
+		self._detect_generator_at_acinput()
 
 	def _evaluate_startstop_conditions(self):
 		if self.get_error() != Errors.NONE:
@@ -395,6 +404,51 @@ class StartStop:
 		elif (self._dbusservice['/Runtime'] >= self._settings['minimumruntime'] * 60
 			  or activecondition == 'manual'):
 			self._stop_generator()
+
+	def _detect_generator_at_acinput(self):
+		state = self._dbusservice['/State']
+
+		if state == States.STOPPED:
+			self._reset_acpower_inverter_input()
+			return
+
+		if self._settings['nogeneratoratacinalarm'] == 0:
+			self._reset_acpower_inverter_input()
+			return
+
+		vebus_service = self._vebusservice if self._vebusservice else ''
+		activein_state = self._dbusmonitor.get_value(
+			vebus_service, '/Ac/ActiveIn/Connected')
+
+		# Path not supported, skip evaluation
+		if activein_state == None:
+			return
+
+		# Sources 0 = Not available, 1 = Grid, 2 = Generator, 3 = Shore
+		generator_acsource = self._dbusmonitor.get_value(
+			self._system_service, '/Ac/ActiveIn/Source') == 2
+		# Not connected = 0, connected = 1
+		activein_connected = activein_state == 1
+
+		if generator_acsource and activein_connected:
+			if self._acpower_inverter_input['unabletostart']:
+				self.log_info('Generator detected at inverter AC input, alarm removed')
+			self._reset_acpower_inverter_input()
+		elif self._acpower_inverter_input['timeout'] < self.RETRIES_ON_ERROR:
+			self._acpower_inverter_input['timeout'] += 1
+		elif not self._acpower_inverter_input['unabletostart']:
+			self._acpower_inverter_input['unabletostart'] = True
+			self._dbusservice['/Alarms/NoGeneratorAtAcIn'] = 2
+			self.log_info('Generator not detected at inverter AC input, triggering alarm')
+
+	def _reset_acpower_inverter_input(self, clear_error=True):
+		if self._acpower_inverter_input['timeout'] != 0:
+			self._acpower_inverter_input['timeout'] = 0
+
+		if self._acpower_inverter_input['unabletostart'] != 0:
+			self._acpower_inverter_input['unabletostart'] = 0
+
+		self._dbusservice['/Alarms/NoGeneratorAtAcIn'] = 0
 
 	def _reset_condition(self, condition):
 		condition['reached'] = False
