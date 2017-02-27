@@ -18,16 +18,17 @@ from logger import setup_logging
 from mock_dbus_monitor import MockDbusMonitor
 from mock_dbus_service import MockDbusService
 from mock_settings_device import MockSettingsDevice
-
-dbus_generator.logger = setup_logging()
+from ss_utils import Errors, States
 
 
 class MockGenerator(dbus_generator.Generator):
+
 	def _create_dbus_monitor(self, *args, **kwargs):
 		return MockDbusMonitor(*args, **kwargs)
 
 	def _create_settings(self, *args, **kwargs):
-		return MockSettingsDevice(*args, **kwargs)
+		self._settings = MockSettingsDevice(*args, **kwargs)
+		return self._settings
 
 	def _create_dbus_service(self):
 		return MockDbusService('com.victronenergy.generator.startstop0')
@@ -80,7 +81,7 @@ class TestGeneratorBase(unittest.TestCase):
 
 	def _check_values(self, values):
 		ok = True
-		for k,v in values.items():
+		for k, v in values.items():
 			v2 = self._service[k] if k in self._service else None
 			if isinstance(v, (int, float)) and v2 is not None:
 				d = abs(v - v2)
@@ -94,7 +95,7 @@ class TestGeneratorBase(unittest.TestCase):
 		if ok:
 			return
 		msg = ''
-		for k,v in values.items():
+		for k, v in values.items():
 			msg += '{0}:\t{1}'.format(k, v)
 			if k in self._service:
 				msg += '\t{}'.format(self._service[k])
@@ -108,6 +109,7 @@ class TestGenerator(TestGeneratorBase):
 
 	def setUp(self):
 		TestGeneratorBase.setUp(self)
+
 		self._add_device('com.victronenergy.system',
 			product_name='SystemCalc',
 			values={
@@ -125,10 +127,17 @@ class TestGenerator(TestGeneratorBase):
 				'/Ac/PvOnGenset/L3/Power': 0,
 				'/Ac/PvOnGenset/Total/Power': 0,
 				'/Dc/Pv/Power': 0,
+				'/Ac/ActiveIn/Source': 2,
 				'/AutoSelectedBatteryMeasurement': "com_victronenergy_battery_258/Dc/0",
 				'/VebusService': "com.victronenergy.vebus.ttyO1",
 				'/Relay/0/State': 0
 				})
+
+		self._add_device('com.victronenergy.settings',
+			values={
+				'/Settings/Relay/Function': 1,
+				'/Settings/System/TimeZone': 'Europe/Berlin'
+			})
 
 		self._add_device('com.victronenergy.vebus.ttyO1',
 			product_name='Multi',
@@ -162,11 +171,6 @@ class TestGenerator(TestGeneratorBase):
 				'/Soc': 87
 				})
 
-		self._add_device('com.victronenergy.settings',
-			values={
-				'/Settings/Relay/Function': 1,
-				'/Settings/System/TimeZone': 'Europe/Berlin'
-			})
 		# DBus service is not created till Settings/Relay/Function is 1
 		self._service = self._generator_._dbusservice
 
@@ -174,7 +178,7 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L1/Power', 1900)
 		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L2/Power', 100)
 		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L3/Power', 600)
-		
+
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 0)
 		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 2600)
@@ -184,7 +188,7 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 	def test_activeinput(self):
@@ -204,27 +208,27 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/ActiveInput', 0)
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/Connected', 0)
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/Connected', 1)
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/P', 500)
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 
 	def test_acload(self):
@@ -241,12 +245,12 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 1650)
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 	def test_overload_alarm_vebus(self):
@@ -256,8 +260,8 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 1,
-			'/RunningByCondition': 'inverteroverload'
+			'/Generator0/State': States.RUNNING,
+			'/Generator0/RunningByCondition': 'inverteroverload'
 		})
 
 	def test_hightemp_alarm_vebus(self):
@@ -267,8 +271,8 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 1,
-			'/RunningByCondition': 'inverterhightemp'
+			'/Generator0/State': States.RUNNING,
+			'/Generator0/RunningByCondition': 'inverterhightemp'
 		})
 
 	def test_hightemp_alarm_canbus(self):
@@ -282,8 +286,8 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 1,
-			'/RunningByCondition': 'inverterhightemp'
+			'/Generator0/State': States.RUNNING,
+			'/Generator0/RunningByCondition': 'inverterhightemp'
 		})
 
 	def test_overload_alarm_canbus(self):
@@ -297,8 +301,8 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 1,
-			'/RunningByCondition': 'inverteroverload'
+			'/Generator0/State': States.RUNNING,
+			'/Generator0/RunningByCondition': 'inverteroverload'
 		})
 
 	def test_ac_highest_phase(self):
@@ -315,7 +319,7 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 	def test_manual_start(self):
@@ -323,20 +327,20 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/ActiveInput', 1)
 		self._set_setting('/Settings/Generator0/StopWhenAc1Available', 1)
 
-		self._service['/ManualStart'] = 1
+		self._service['/Generator0/ManualStart'] = 1
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/ActiveInput', 0)
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
-		self._service['/ManualStart'] = 0
+		self._service['/Generator0/ManualStart'] = 0
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 
 	def test_testrun(self):
@@ -354,26 +358,26 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 0,
+			'/Generator0/State': States.STOPPED,
 		})
 
 		self._set_setting('/Settings/Generator0/TestRun/Interval', 1)
 		self._update_values()
 		self._check_values({
-			'/State': 1,
+			'/Generator0/State': States.RUNNING,
 		})
 
 		sleep(1)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/ActiveInput', 0)
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 		sleep(1)
 		self._update_values()
 		self._check_values({
-			'/State': 0,
+			'/Generator0/State': States.STOPPED,
 		})
 
 	def test_skip_testrun(self):
@@ -395,7 +399,7 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 
 	def test_testrun_battery_full(self):
@@ -410,19 +414,19 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 0,
+			'/Generator0/State': States.STOPPED,
 		})
 
 		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Soc', 70)
 		self._update_values()
 		self._check_values({
-			'/State': 1,
+			'/Generator0/State': States.RUNNING,
 		})
 
 		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Soc', 100)
 		self._update_values()
 		self._check_values({
-			'/State': 0,
+			'/Generator0/State': States.STOPPED,
 		})
 
 	def test_comm_failure(self):
@@ -438,7 +442,7 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 		self._remove_device("com.victronenergy.vebus.ttyO1")
@@ -446,13 +450,13 @@ class TestGenerator(TestGeneratorBase):
 
 		for x in range(0, 300):
 			self._check_values({
-				'/State': 1
+				'/Generator0/State': States.RUNNING
 			})
 			self._update_values()
 
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 
 	def test_comm_failure_continue_running(self):
@@ -469,20 +473,20 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 		self._remove_device("com.victronenergy.vebus.ttyO1")
 		self._monitor.set_value('com.victronenergy.system', '/VebusService', [])
 
 		for x in range(0, 300):
 			self._check_values({
-				'/State': 1
+				'/Generator0/State': States.RUNNING
 			})
 			self._update_values()
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 	def test_comm_failure_start(self):
@@ -502,13 +506,13 @@ class TestGenerator(TestGeneratorBase):
 
 		for x in range(0, 300):
 			self._check_values({
-				'/State': 0
+				'/Generator0/State': States.STOPPED
 			})
 			self._update_values()
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 	def test_comm_failure_battery(self):
@@ -522,21 +526,21 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 		self._monitor.set_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement', [])
 		self._remove_device("com.victronenergy.battery.ttyO5")
 		for x in range(0, 300):
 			self._check_values({
-				'/State': 1
+				'/Generator0/State': States.RUNNING
 			})
 			self._update_values()
 
 
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 
 	def test_comm_failure_battery_continue_running(self):
@@ -550,7 +554,7 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 		self._monitor.set_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement', [])
@@ -558,13 +562,13 @@ class TestGenerator(TestGeneratorBase):
 
 		for x in range(0, 300):
 			self._check_values({
-				'/State': 1
+				'/Generator0/State': States.RUNNING
 			})
 			self._update_values()
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 	def test_comm_failure_battery_start(self):
@@ -578,7 +582,7 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 
 		self._monitor.set_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement', [])
@@ -586,13 +590,13 @@ class TestGenerator(TestGeneratorBase):
 
 		for x in range(0, 300):
 			self._check_values({
-				'/State': 0
+				'/Generator0/State': States.STOPPED
 			})
 			self._update_values()
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 	def test_disable_autostart(self):
@@ -605,20 +609,20 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 		self._set_setting('/Settings/Generator0/AutoStartEnabled', 0)
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 
 	def test_disable_autostart_manual(self):
 		self._set_setting('/Settings/Generator0/AutoStartEnabled', 0)
-		self._service['/ManualStart'] = 1
+		self._service['/Generator0/ManualStart'] = 1
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 	def test_minimum_runtime(self):
@@ -632,19 +636,19 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Current', 0)
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 		sleep(1)
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 
 	def test_timed_condition(self):
@@ -658,27 +662,27 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 
 		sleep(1)
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Current', 0)
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 		sleep(1)
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 
 	def test_quiethours(self):
@@ -697,18 +701,18 @@ class TestGenerator(TestGeneratorBase):
 
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 		self._set_setting('/Settings/Generator0/QuietHours/StartTime', self._seconds_since_midnight())
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 		self._set_setting('/Settings/Generator0/QuietHours/StartTime', self._seconds_since_midnight() - 1)
 		self._set_setting('/Settings/Generator0/QuietHours/EndTime', self._seconds_since_midnight())
 		self._update_values()
 		self._check_values({
-			'/State': 1
+			'/Generator0/State': States.RUNNING
 		})
 
 	def test_condition_cascade(self):
@@ -743,15 +747,15 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Soc', 60)
 		self._update_values()
 		self._check_values({
-			'/State': 1,
-			'/RunningByCondition': "soc"
+			'/Generator0/State': States.RUNNING,
+			'/Generator0/RunningByCondition': "soc"
 		})
 
 		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Soc', 70)
 		self._update_values()
 		self._check_values({
-			'/State': 1,
-			'/RunningByCondition': "acload"
+			'/Generator0/State': States.RUNNING,
+			'/Generator0/RunningByCondition': "acload"
 		})
 
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 200)
@@ -759,21 +763,21 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 200)
 		self._update_values()
 		self._check_values({
-			'/State': 1,
-			'/RunningByCondition': "batterycurrent"
+			'/Generator0/State': States.RUNNING,
+			'/Generator0/RunningByCondition': "batterycurrent"
 		})
 
 		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Current', -30)
 		self._update_values()
 		self._check_values({
-			'/State': 1,
-			'/RunningByCondition': "batteryvoltage"
+			'/Generator0/State': States.RUNNING,
+			'/Generator0/RunningByCondition': "batteryvoltage"
 		})
 
 		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Voltage', 15)
 		self._update_values()
 		self._check_values({
-			'/State': 0
+			'/Generator0/State': States.STOPPED
 		})
 
 
