@@ -195,8 +195,8 @@ class Generator:
 		supported_settings = {
 				'autostart': ['/Settings/Generator0/AutoStartEnabled', 1, 0, 1],
 				'stopwhengridavailable': ['/Settings/Generator0/StopWhenGridAvailable', 0, 0, 0],
-				'accumulateddaily': ['/Settings/Generator0/AccumulatedDaily', '', 0, 0],
-				'accumulatedtotal': ['/Settings/Generator0/AccumulatedTotal', 0, 0, 0],
+				'accumulateddaily': ['/Settings/Generator0/AccumulatedDaily', '', 0, 0, True],
+				'accumulatedtotal': ['/Settings/Generator0/AccumulatedTotal', 0, 0, 0, True],
 				'batterymeasurement': ['/Settings/Generator0/BatteryService', 'default', 0, 0],
 				'minimumruntime': ['/Settings/Generator0/MinimumRuntime', 0, 0, 86400],  # minutes
 				'stoponac1enabled': ['/Settings/Generator0/StopWhenAc1Available', 0, 0, 10],
