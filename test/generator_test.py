@@ -287,6 +287,30 @@ class TestGenerator(TestGeneratorBase):
 			'/Generator0/State': States.RUNNING
 		})
 
+	def test_dont_detect_generator_noac(self):
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/P', 2100)
+		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 2200)
+		self._set_setting('/Settings/Generator0/AcLoad/StopValue', 800)
+		self._set_setting('/Settings/Generator0/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/Generator0/AcLoad/StopTimer', 0)
+		self._set_setting('/Settings/Generator0/Alarms/NoGeneratorAtAcIn', 0)
+
+		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 1650)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/Connected', 0)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ActiveIn/Source', 240)
+
+		# Wait for generator
+		self._update_values(320000)
+		self._check_values({
+			'/Generator0/Alarms/NoGeneratorAtAcIn': 0,
+			'/Generator0/State': States.RUNNING
+		})
+
 	def test_detect_generator(self):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
