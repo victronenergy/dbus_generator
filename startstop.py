@@ -576,13 +576,28 @@ class StartStop:
 			return False
 
 		today = datetime.date.today()
+		yesterday = today - datetime.timedelta(days=1) # Should deal well with DST
+		now = time.time()
 		runtillbatteryfull = self._settings['testruntillbatteryfull'] == 1
 		soc = self._get_updated_values()['soc']
 		batteryisfull = runtillbatteryfull and soc == 100
+		duration = 60 if runtillbatteryfull else self._settings['testrunruntime']
 
 		try:
 			startdate = datetime.date.fromtimestamp(self._settings['testrunstartdate'])
-			starttime = time.mktime(today.timetuple()) + self._settings['testrunstarttimer']
+			_starttime = time.mktime(yesterday.timetuple()) + self._settings['testrunstarttimer']
+
+			# today might in fact still be yesterday, if this test run started
+			# before midnight and finishes after. If `now` still falls in
+			# yesterday's window, then by the temporal anthropic principle,
+			# which I just made up but loosely states that time must have
+			# these properties for observers to exist, it must be yesterday
+			# because we are here to observe it.
+			if _starttime <= now <= _starttime + duration:
+				today = yesterday
+				starttime = _starttime
+			else:
+				starttime = time.mktime(today.timetuple()) + self._settings['testrunstarttimer']
 		except ValueError:
 			logging.debug('Invalid dates, skipping testrun')
 			return False
@@ -600,11 +615,11 @@ class StartStop:
 		self._dbusservice['/SkipTestRun'] = int(not needed)
 
 		interval = self._settings['testruninterval']
-		stoptime = (starttime + self._settings['testrunruntime']) if not runtillbatteryfull else (starttime + 60)
+		stoptime = starttime + duration
 		elapseddays = (today - startdate).days
 		mod = elapseddays % interval
 
-		start = (not bool(mod) and (time.time() >= starttime) and (time.time() <= stoptime))
+		start = not bool(mod) and starttime <= now <= stoptime
 
 		if runtillbatteryfull:
 			if soc is not None:
@@ -622,7 +637,7 @@ class StartStop:
 			else:
 				start = False
 
-		if not bool(mod) and (time.time() <= stoptime):
+		if not bool(mod) and (now <= stoptime):
 			self._dbusservice['/NextTestRun'] = starttime
 		else:
 			self._dbusservice['/NextTestRun'] = (time.mktime((today + datetime.timedelta(days=interval - mod)).timetuple()) +
