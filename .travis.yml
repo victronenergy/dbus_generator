@@ -5,7 +5,7 @@ python:
 
 before_install:
   - sudo apt-get update
-  - sudo apt-get install python-gobject-2
+  - sudo apt-get install python-gobject-2 python-dbus
 
 script:
   - cd test && python generator_test.py -v
