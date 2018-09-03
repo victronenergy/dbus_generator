@@ -21,7 +21,7 @@ import time
 import relay
 import fischerpanda
 
-softwareversion = '1.3.8'
+softwareversion = '1.3.9'
 
 class Generator:
 	def __init__(self):
