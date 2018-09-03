@@ -806,7 +806,15 @@ class StartStop:
 
 		if batterymeasurement:
 			battery_instance = int(batterymeasurement.split('_', 3)[3].split('/')[0])
-			newbatteryservice = self._get_servicename_by_instance(battery_instance)
+			service_type = None
+
+			if 'vebus' in batterymeasurement:
+				service_type = 'vebus'
+			elif 'battery' in batterymeasurement:
+				service_type = 'battery'
+
+			newbatteryservice = self._get_servicename_by_instance(battery_instance, service_type)
+
 
 		if newbatteryservice and newbatteryservice != oldservice:
 			if selectedbattery == 'nobattery':
@@ -834,12 +842,18 @@ class StartStop:
 				self.log_info('Error getting Vebus service!')
 			self._vebusservice = None
 
-	def _get_servicename_by_instance(self, instance):
-		services = self._dbusmonitor.get_service_list()
+	def _get_servicename_by_instance(self, instance, service_type=None):
 		sv = None
-		for i in services:
-			if services[i] == instance:
-				sv = i
+		services = self._dbusmonitor.get_service_list()
+
+		for service in services:
+			if service_type and service_type not in service:
+				continue
+
+			if services[service] == instance:
+				sv = service
+				break
+
 		return sv
 
 	def _get_monotonic_seconds(self):
