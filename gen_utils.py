@@ -1,5 +1,16 @@
 dummy = {'code': None, 'whenToLog': 'configChange', 'accessLevel': None}
 
+class BaseEnum(object):
+	@classmethod
+	def lookup(klass, v):
+		return klass._lookup[v]
+
+def enum(**kw):
+	c = type('Enum', (BaseEnum,), kw)
+	c._lookup = { x.lower(): y for x, y in kw.iteritems() }
+	return c
+
+
 class Errors:
 	NONE, REMOTEDISABLED, REMOTEINFAULT = range(3)
 	@staticmethod

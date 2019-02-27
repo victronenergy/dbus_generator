@@ -454,7 +454,8 @@ class TestGenerator(TestGeneratorBase):
 		self._update_values()
 		self._check_values({
 			'/Generator0/State': States.RUNNING,
-			'/Generator0/RunningByCondition': 'inverteroverload'
+			'/Generator0/RunningByCondition': 'inverteroverload',
+			'/Generator0/RunningByConditionCode': 9
 		})
 
 	def test_hightemp_alarm_vebus(self):
@@ -465,7 +466,8 @@ class TestGenerator(TestGeneratorBase):
 		self._update_values()
 		self._check_values({
 			'/Generator0/State': States.RUNNING,
-			'/Generator0/RunningByCondition': 'inverterhightemp'
+			'/Generator0/RunningByCondition': 'inverterhightemp',
+			'/Generator0/RunningByConditionCode': 8
 		})
 
 	def test_hightemp_alarm_canbus(self):
@@ -480,7 +482,8 @@ class TestGenerator(TestGeneratorBase):
 		self._update_values()
 		self._check_values({
 			'/Generator0/State': States.RUNNING,
-			'/Generator0/RunningByCondition': 'inverterhightemp'
+			'/Generator0/RunningByCondition': 'inverterhightemp',
+			'/Generator0/RunningByConditionCode': 8
 		})
 
 	def test_overload_alarm_canbus(self):
@@ -495,7 +498,8 @@ class TestGenerator(TestGeneratorBase):
 		self._update_values()
 		self._check_values({
 			'/Generator0/State': States.RUNNING,
-			'/Generator0/RunningByCondition': 'inverteroverload'
+			'/Generator0/RunningByCondition': 'inverteroverload',
+			'/Generator0/RunningByConditionCode': 9
 		})
 
 	def test_ac_highest_phase(self):
@@ -934,14 +938,16 @@ class TestGenerator(TestGeneratorBase):
 		self._update_values()
 		self._check_values({
 			'/Generator0/State': States.RUNNING,
-			'/Generator0/RunningByCondition': "soc"
+			'/Generator0/RunningByCondition': "soc",
+			'/Generator0/RunningByConditionCode': 4
 		})
 
 		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Soc', 70)
 		self._update_values()
 		self._check_values({
 			'/Generator0/State': States.RUNNING,
-			'/Generator0/RunningByCondition': "acload"
+			'/Generator0/RunningByCondition': "acload",
+			'/Generator0/RunningByConditionCode': 5
 		})
 
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 200)
@@ -950,14 +956,16 @@ class TestGenerator(TestGeneratorBase):
 		self._update_values()
 		self._check_values({
 			'/Generator0/State': States.RUNNING,
-			'/Generator0/RunningByCondition': "batterycurrent"
+			'/Generator0/RunningByCondition': "batterycurrent",
+			'/Generator0/RunningByConditionCode': 6
 		})
 
 		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Current', -30)
 		self._update_values()
 		self._check_values({
 			'/Generator0/State': States.RUNNING,
-			'/Generator0/RunningByCondition': "batteryvoltage"
+			'/Generator0/RunningByCondition': "batteryvoltage",
+			'/Generator0/RunningByConditionCode': 7
 		})
 
 		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Voltage', 15)

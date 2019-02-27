@@ -19,11 +19,25 @@ import os
 import logging
 from os import environ
 import monotonic_time
-from gen_utils import DBusServicePrefix, SettingsPrefix, Errors, States
+from gen_utils import DBusServicePrefix, SettingsPrefix, Errors, States, enum
 # Victron packages
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'ext', 'velib_python'))
 from ve_utils import exit_on_error
 from settingsdevice import SettingsDevice
+
+RunningConditions = enum(
+		Stopped = 0,
+		Manual = 1,
+		TestRun = 2,
+		LossOfCommunication = 3,
+		Soc = 4,
+		Acload = 5,
+		BatteryCurrent = 6,
+		BatteryVoltage = 7,
+		InverterHighTemp = 8,
+		InverterOverload = 9,
+		StopOnAc1 = 10)
+
 
 class StartStop:
 
@@ -157,6 +171,9 @@ class StartStop:
 	def _create_paths(self):
 		# State: None = invalid, 0 = stopped, 1 = running
 		self._dbusservice.add_path('/State', value=None)
+		# RunningByConditionCode: Numeric Companion to /RunningByCondition below, but
+		# also encompassing a Stopped state.
+		self._dbusservice.add_path('/RunningByConditionCode', value=None)
 		# Error
 		self._dbusservice.add_path('/Error', value=None, gettextcallback=self._gettext)
 		# Condition that made the generator start
@@ -184,6 +201,7 @@ class StartStop:
 		# otherwise the gui will report the paths as invalid if we remove and recreate the paths without
 		# restarting the dbusservice.
 		self._dbusservice['/State'] = 0
+		self._dbusservice['/RunningByConditionCode'] = RunningConditions.Stopped
 		self._dbusservice['/Error'] = 0
 		self._dbusservice['/RunningByCondition'] = ''
 		self._dbusservice['/Runtime'] = 0
@@ -220,6 +238,7 @@ class StartStop:
 
 	def _remove_paths(self):
 		self._dbusservice.__delitem__('/State')
+		self._dbusservice.__delitem__('/RunningByConditionCode')
 		self._dbusservice.__delitem__('/Error')
 		self._dbusservice.__delitem__('/RunningByCondition')
 		self._dbusservice.__delitem__('/Runtime')
@@ -875,6 +894,7 @@ class StartStop:
 						% (self._dbusservice['/RunningByCondition'], condition))
 
 		self._dbusservice['/RunningByCondition'] = condition
+		self._dbusservice['/RunningByConditionCode'] = RunningConditions.lookup(condition)
 
 	def _stop_generator(self):
 		state = self._dbusservice['/State']
@@ -886,6 +906,7 @@ class StartStop:
 			self.log_info('Stopping generator that was running by %s condition' %
 						str(self._dbusservice['/RunningByCondition']))
 			self._dbusservice['/RunningByCondition'] = ''
+			self._dbusservice['/RunningByConditionCode'] = RunningConditions.Stopped
 			self._update_accumulated_time()
 			self._starttime = 0
 			self._dbusservice['/Runtime'] = 0
