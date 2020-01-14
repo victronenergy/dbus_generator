@@ -38,11 +38,13 @@ RunningConditions = enum(
 		InverterOverload = 9,
 		StopOnAc1 = 10)
 
+SYSTEM_SERVICE = 'com.victronenergy.system'
+BATTERY_PREFIX = '/Dc/Battery'
+HISTORY_DAYS = 30
+
 
 class StartStop:
-
 	def __init__(self):
-
 		self._dbusservice = None
 		self._settings = None
 		self._dbusmonitor = None
@@ -50,9 +52,6 @@ class StartStop:
 		self._name = None
 		self._enabled = False
 
-		self._system_service = 'com.victronenergy.system'
-
-		self.HISTORY_DAYS = 30
 		# One second per retry
 		self.RETRIES_ON_ERROR = 300
 		self._testrun_soc_retries = 0
@@ -62,10 +61,14 @@ class StartStop:
 		self._manualstarttimer = 0
 		self._last_runtime_update = 0
 		self._timer_runnning = 0
-		self._battery_service = None
-		self._battery_prefix = None
+
+		# Manual battery service selection is deprecated in favour
+		# of getting the values directly from systemcalc, we keep
+		# manual selected services handling for compatibility reasons.
 		self._vebusservice = None
 		self._errorstate = 0
+		self._battery_service = None
+		self._battery_prefix = None
 
 		self._acpower_inverter_input = {
 			'timeout': 0,
@@ -445,7 +448,7 @@ class StartStop:
 
 		# Sources 0 = Not available, 1 = Grid, 2 = Generator, 3 = Shore
 		generator_acsource = self._dbusmonitor.get_value(
-			self._system_service, '/Ac/ActiveIn/Source') == 2
+			SYSTEM_SERVICE, '/Ac/ActiveIn/Source') == 2
 		# Not connected = 0, connected = 1
 		activein_connected = activein_state == 1
 
@@ -709,7 +712,7 @@ class StartStop:
 		self._last_runtime_update = seconds
 
 		# Keep the historical with a maximum of HISTORY_DAYS
-		while len(accumulated_days) > self.HISTORY_DAYS:
+		while len(accumulated_days) > HISTORY_DAYS:
 			accumulated_days.pop(min(accumulated_days.keys()), None)
 
 		# Upadate settings
@@ -731,9 +734,19 @@ class StartStop:
 
 		return summ
 
+	def _get_battery(self):
+		battery = {}
+		if self._settings['batterymeasurement'] == 'default':
+			battery['service'] = SYSTEM_SERVICE
+			battery['prefix'] = BATTERY_PREFIX
+		else:
+			battery['service'] = self._battery_service if self._battery_service else ''
+			battery['prefix'] = self._battery_prefix if self._battery_prefix else ''
+
+		return battery
+
 	def _get_updated_values(self):
-		battery_service = self._battery_service if self._battery_service else ''
-		battery_prefix = self._battery_prefix if self._battery_prefix else ''
+		battery = self._get_battery()
 		vebus_service = self._vebusservice if self._vebusservice else ''
 		loadOnAcOut = []
 		totalConsumption = []
@@ -741,16 +754,25 @@ class StartStop:
 		inverterOverload = []
 
 		values = {
-			'batteryvoltage': self._dbusmonitor.get_value(battery_service, battery_prefix + '/Voltage'),
-			'batterycurrent': self._dbusmonitor.get_value(battery_service, battery_prefix + '/Current'),
-			'soc': self._dbusmonitor.get_value(battery_service, '/Soc'),
+			'batteryvoltage': self._dbusmonitor.get_value(battery['service'], battery['prefix'] + '/Voltage'),
+			'batterycurrent': self._dbusmonitor.get_value(battery['service'], battery['prefix'] + '/Current'),
+			# Soc from the device doesn't have the '/Dc/0' prefix like the current and voltage do, but it does
+			# have the same prefix on systemcalc
+			'soc': self._dbusmonitor.get_value(battery['service'], (battery['prefix'] if battery['prefix'] == BATTERY_PREFIX else '') + '/Soc'),
 			'inverterhightemp': self._dbusmonitor.get_value(vebus_service, '/Alarms/HighTemperature'),
 			'inverteroverload': self._dbusmonitor.get_value(vebus_service, '/Alarms/Overload')
 		}
 
 		for phase in ['L1', 'L2', 'L3']:
+			# Get the values directly from the inverter, systemcalc doesn't provide raw inverted power
 			loadOnAcOut.append(self._dbusmonitor.get_value(vebus_service, ('/Ac/Out/%s/P' % phase)))
-			totalConsumption.append(self._dbusmonitor.get_value(self._system_service, ('/Ac/Consumption/%s/Power' % phase)))
+
+			# Calculate total consumption, '/Ac/Consumption/%s/Power' is deprecated
+			c_i = self._dbusmonitor.get_value(SYSTEM_SERVICE, ('/Ac/ConsumptionOnInput/%s/Power' % phase))
+			c_o = self._dbusmonitor.get_value(SYSTEM_SERVICE, ('/Ac/ConsumptionOnOutput/%s/Power' % phase))
+			totalConsumption.append(sum(filter(None, (c_i, c_o))))
+
+			# Inverter alarms must be fetched directly from the inverter service
 			inverterHighTemp.append(self._dbusmonitor.get_value(vebus_service, ('/Alarms/%s/HighTemperature' % phase)))
 			inverterOverload.append(self._dbusmonitor.get_value(vebus_service, ('/Alarms/%s/Overload' % phase)))
 
@@ -804,8 +826,7 @@ class StartStop:
 		vebusservice = None
 
 		if selectedbattery == 'default':
-			batterymeasurement = self._dbusmonitor.get_value('com.victronenergy.system',
-			'/AutoSelectedBatteryMeasurement')
+			batterymeasurement = 'default'
 		elif len(selectedbattery.split('/', 1)) == 2:  # Only very basic sanity checking..
 			batterymeasurement = self._settings['batterymeasurement']
 		elif selectedbattery == 'nobattery':
@@ -814,7 +835,7 @@ class StartStop:
 			# Exception: unexpected value for batterymeasurement
 			pass
 
-		if batterymeasurement:
+		if batterymeasurement and batterymeasurement != 'default':
 			batteryprefix = '/' + batterymeasurement.split('/', 1)[1]
 
 		# Get the current battery servicename
@@ -823,7 +844,7 @@ class StartStop:
 		else:
 			oldservice = None
 
-		if batterymeasurement:
+		if batterymeasurement != 'default':
 			battery_instance = int(batterymeasurement.split('_', 3)[3].split('/')[0])
 			service_type = None
 
@@ -833,9 +854,12 @@ class StartStop:
 				service_type = 'battery'
 
 			newbatteryservice = self._get_servicename_by_instance(battery_instance, service_type)
-
+		elif batterymeasurement == 'default':
+			newbatteryservice = 'default'
 
 		if newbatteryservice and newbatteryservice != oldservice:
+			if selectedbattery == 'default':
+				self.log_info('Getting battery values from systemcalc.')
 			if selectedbattery == 'nobattery':
 				self.log_info('Battery monitoring disabled! Stop evaluating related conditions')
 				self._battery_service = None

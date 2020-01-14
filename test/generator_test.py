@@ -113,9 +113,12 @@ class TestGenerator(TestGeneratorBase):
 		self._add_device('com.victronenergy.system',
 			product_name='SystemCalc',
 			values={
-				'/Ac/Consumption/L1/Power': 650,
-				'/Ac/Consumption/L2/Power': 650,
-				'/Ac/Consumption/L3/Power': 650,
+				'/Ac/ConsumptionOnOutput/L1/Power': 500,
+				'/Ac/ConsumptionOnOutput/L2/Power': 500,
+				'/Ac/ConsumptionOnOutput/L3/Power': 500,
+				'/Ac/ConsumptionOnInput/L1/Power': 150,
+				'/Ac/ConsumptionOnInput/L2/Power': 150,
+				'/Ac/ConsumptionOnInput/L3/Power': 150,
 				'/Ac/PvOnOutput/L1/Power': 150,
 				'/Ac/PvOnOutput/L2/Power': 150,
 				'/Ac/PvOnOutput/L3/Power': 150,
@@ -127,6 +130,9 @@ class TestGenerator(TestGeneratorBase):
 				'/Ac/PvOnGenset/L3/Power': 0,
 				'/Ac/PvOnGenset/Total/Power': 0,
 				'/Dc/Pv/Power': 0,
+				'/Dc/Battery/Current': 10,
+				'/Dc/Battery/Voltage': 14.4,
+				'/Dc/Battery/Soc': 87,
 				'/Ac/ActiveIn/Source': 2,
 				'/AutoSelectedBatteryMeasurement': "com_victronenergy_battery_258/Dc/0",
 				'/VebusService': "com.victronenergy.vebus.ttyO1",
@@ -173,21 +179,26 @@ class TestGenerator(TestGeneratorBase):
 				})
 
 		self._add_device('com.victronenergy.battery.ttyO5',
-			product_name='battery',
-			instance=258,
-			values={
-				'/Dc/0/Voltage': 14.4,
-				'/Dc/0/Current': 10,
-				'/Soc': 87
-				})
+						 product_name='battery',
+						 instance=258,
+						 values={
+							 '/Dc/0/Voltage': 14.4,
+							 '/Dc/0/Current': 10,
+							 '/Soc': 87
+						 })
+
 
 		# DBus service is not created till Settings/Relay/Function is 1
 		self._service = self._generator_._dbusservice
 
+
 	def test_acload_consumption(self):
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L1/Power', 1900)
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L2/Power', 100)
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L3/Power', 600)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnOutput/L1/Power', 1800)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnOutput/L2/Power', 50)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnOutput/L3/Power', 400)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnInput/L1/Power', 100)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnInput/L2/Power', 50)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnInput/L3/Power', 200)
 
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 0)
@@ -607,29 +618,33 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/TestRun/Duration', 0)
 		self._set_setting('/Settings/Generator0/TestRun/SkipRuntime', 3600)
 		self._set_setting('/Settings/Generator0/TestRun/RunTillBatteryFull', 1)
-		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Soc', 100)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', 100)
 
 		self._update_values()
 		self._check_values({
 			'/Generator0/State': States.STOPPED,
 		})
 
-		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Soc', 70)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', 70)
 		self._update_values()
 		self._check_values({
 			'/Generator0/State': States.RUNNING,
 		})
 
-		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Soc', 100)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', 100)
 		self._update_values()
 		self._check_values({
 			'/Generator0/State': States.STOPPED,
 		})
 
 	def test_comm_failure(self):
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L1/Power', 1900)
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L2/Power', 100)
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L3/Power', 600)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnOutput/L1/Power', 1800)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnOutput/L2/Power', 50)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnOutput/L3/Power', 400)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnInput/L1/Power', 100)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnInput/L2/Power', 50)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnInput/L3/Power', 200)
+
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 0)
 		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 1600)
@@ -656,9 +671,12 @@ class TestGenerator(TestGeneratorBase):
 		})
 
 	def test_comm_failure_continue_running(self):
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L1/Power', 1900)
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L2/Power', 100)
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L3/Power', 600)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnOutput/L1/Power', 1800)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnOutput/L2/Power', 50)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnOutput/L3/Power', 400)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnInput/L1/Power', 100)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnInput/L2/Power', 50)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnInput/L3/Power', 200)
 		self._set_setting('/Settings/Generator0/OnLossCommunication', 2)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 0)
@@ -685,9 +703,13 @@ class TestGenerator(TestGeneratorBase):
 		})
 
 	def test_comm_failure_start(self):
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L1/Power', 50)
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L2/Power', 25)
-		self._monitor.set_value('com.victronenergy.system', '/Ac/Consumption/L3/Power', 25)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnOutput/L1/Power', 25)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnOutput/L2/Power', 15)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnOutput/L3/Power', 15)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnInput/L1/Power', 25)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnInput/L2/Power', 10)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ConsumptionOnInput/L3/Power', 10)
+
 		self._set_setting('/Settings/Generator0/OnLossCommunication', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 0)
@@ -716,7 +738,7 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StopValue', 30)
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StartTimer', 0)
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StopTimer', 0)
-		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Current', -60)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', -60)
 
 		self._update_values()
 		self._check_values({
@@ -724,7 +746,7 @@ class TestGenerator(TestGeneratorBase):
 		})
 
 		self._monitor.set_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement', [])
-		self._remove_device("com.victronenergy.battery.ttyO5")
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', None)
 		self._update_values(300000)
 		self._check_values({
 			'/Generator0/State': States.RUNNING
@@ -742,7 +764,7 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StopValue', 30)
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StartTimer', 0)
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StopTimer', 0)
-		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Current', -60)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', -60)
 
 		self._update_values()
 		self._check_values({
@@ -750,7 +772,7 @@ class TestGenerator(TestGeneratorBase):
 		})
 
 		self._monitor.set_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement', [])
-		self._remove_device("com.victronenergy.battery.ttyO5")
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', [])
 
 		self._update_values(300000)
 		self._check_values({
@@ -769,7 +791,7 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StopValue', 30)
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StartTimer', 0)
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StopTimer', 0)
-		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Current', 0)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', 0)
 
 		self._update_values()
 		self._check_values({
@@ -777,7 +799,7 @@ class TestGenerator(TestGeneratorBase):
 		})
 
 		self._monitor.set_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement', [])
-		self._remove_device("com.victronenergy.battery.ttyO5")
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', None)
 
 		self._update_values(299000)
 		self._check_values({
@@ -795,7 +817,7 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StopValue', 30)
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StartTimer', 0)
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StopTimer', 0)
-		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Current', -60)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', -60)
 
 		self._update_values()
 		self._check_values({
@@ -822,14 +844,14 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StopValue', 30)
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StartTimer', 0)
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StopTimer', 0)
-		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Current', -60)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', -60)
 
 		self._update_values()
 		self._check_values({
 			'/Generator0/State': States.RUNNING
 		})
-
-		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Current', 0)
+		
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', 0)
 		self._update_values()
 		self._check_values({
 			'/Generator0/State': States.RUNNING
@@ -848,7 +870,7 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StopValue', 30)
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StartTimer', 1)
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StopTimer', 1)
-		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Current', -60)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', -60)
 
 		self._update_values()
 		self._check_values({
@@ -862,7 +884,7 @@ class TestGenerator(TestGeneratorBase):
 			'/Generator0/State': States.RUNNING
 		})
 
-		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Current', 0)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', 0)
 
 		self._update_values()
 		self._check_values({
@@ -887,7 +909,7 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/QuietHours/StartTime', self._seconds_since_midnight() + 1)
 		self._set_setting('/Settings/Generator0/QuietHours/EndTime', self._seconds_since_midnight() + 2)
 
-		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Current', -60)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', -60)
 
 		self._update_values()
 		self._check_values({
@@ -928,6 +950,87 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StopValue', 30)
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StartTimer', 0)
 		self._set_setting('/Settings/Generator0/BatteryCurrent/StopTimer', 0)
+
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 600)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 850)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 550)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Voltage', 11.5)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', -60)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', 60)
+		self._update_values()
+		self._check_values({
+			'/Generator0/State': States.RUNNING,
+			'/Generator0/RunningByCondition': "soc",
+			'/Generator0/RunningByConditionCode': 4
+		})
+
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', 70)
+		self._update_values()
+		self._check_values({
+			'/Generator0/State': States.RUNNING,
+			'/Generator0/RunningByCondition': "acload",
+			'/Generator0/RunningByConditionCode': 5
+		})
+
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 200)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 200)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 200)
+		self._update_values()
+		self._check_values({
+			'/Generator0/State': States.RUNNING,
+			'/Generator0/RunningByCondition': "batterycurrent",
+			'/Generator0/RunningByConditionCode': 6
+		})
+
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', -30)
+		self._update_values()
+		self._check_values({
+			'/Generator0/State': States.RUNNING,
+			'/Generator0/RunningByCondition': "batteryvoltage",
+			'/Generator0/RunningByConditionCode': 7
+		})
+
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Voltage', 15)
+		self._update_values()
+		self._check_values({
+			'/Generator0/State': States.STOPPED
+		})
+
+	def test_cascade_manual_battery_service(self):
+		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 1100)
+		self._set_setting('/Settings/Generator0/AcLoad/StopValue', 600)
+		self._set_setting('/Settings/Generator0/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/Generator0/AcLoad/StopTimer', 0)
+
+		self._set_setting('/Settings/Generator0/Soc/Enabled', 1)
+		self._set_setting('/Settings/Generator0/Soc/StartValue', 60)
+		self._set_setting('/Settings/Generator0/Soc/StopValue', 70)
+
+		self._set_setting('/Settings/Generator0/BatteryVoltage/Enabled', 1)
+		self._set_setting('/Settings/Generator0/BatteryVoltage/StartValue', 11.5)
+		self._set_setting('/Settings/Generator0/BatteryVoltage/StopValue', 13.7)
+		self._set_setting('/Settings/Generator0/BatteryVoltage/StartTimer', 0)
+		self._set_setting('/Settings/Generator0/BatteryVoltage/StopTimer', 0)
+
+		self._set_setting('/Settings/Generator0/BatteryCurrent/Enabled', 1)
+		self._set_setting('/Settings/Generator0/BatteryCurrent/StartValue', 60)
+		self._set_setting('/Settings/Generator0/BatteryCurrent/StopValue', 30)
+		self._set_setting('/Settings/Generator0/BatteryCurrent/StartTimer', 0)
+		self._set_setting('/Settings/Generator0/BatteryCurrent/StopTimer', 0)
+
+		# Invalidate systemcalc battery values to make sure the script is not getting
+		# them form it
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Voltage', None)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', None)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', None)
+
+		# Manual battery service selection is deprecated in favour of using the
+		# calculated values from systemcalc but we still need to be compatible
+		# for old installations where the selected battery service is not the
+		# used by the system.
+		self._set_setting('/Settings/Generator0/BatteryService', 'com_victronenergy_battery_258/Dc/0')
 
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 600)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 850)

@@ -65,13 +65,19 @@ class Generator:
 				'/Soc': dummy
 				},
 			'com.victronenergy.system': {
-				'/Ac/Consumption/L1/Power': dummy,
-				'/Ac/Consumption/L2/Power': dummy,
-				'/Ac/Consumption/L3/Power': dummy,
+				'/Ac/ConsumptionOnInput/L1/Power': dummy,
+				'/Ac/ConsumptionOnInput/L2/Power': dummy,
+				'/Ac/ConsumptionOnInput/L3/Power': dummy,
+				'/Ac/ConsumptionOnOutput/L1/Power': dummy,
+				'/Ac/ConsumptionOnOutput/L2/Power': dummy,
+				'/Ac/ConsumptionOnOutput/L3/Power': dummy,
 				'/Dc/Pv/Power': dummy,
 				'/AutoSelectedBatteryMeasurement': dummy,
 				'/Ac/ActiveIn/Source': dummy,
-				'/VebusService': dummy
+				'/VebusService': dummy,
+				'/Dc/Battery/Voltage': dummy,
+				'/Dc/Battery/Current': dummy,
+				'/Dc/Battery/Soc': dummy
 				}
 			}
 
