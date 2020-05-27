@@ -3,9 +3,12 @@ dbus_generator
 
 [![Build Status](https://travis-ci.org/victronenergy/dbus_generator.svg?branch=master)](https://travis-ci.org/victronenergy/dbus_generator)
 
-Python script taking care of generator start/stop based on battery status and/or AC load. To be used on the Color Control GX.
+Python script taking care of generator start/stop based on battery status and/or AC load. To be used on a GX device.
+With this script you can set conditions to start or stop the generator.
 
-The CCGX internal relay can be used to start a generator using its internal relay. With this script you can set conditions to make the relay open or close.
+Currently the script supports the following configurations
+- Controlling a generator using Relay0 on a GX device; the `com.victronenergy.generator.startstop0/Generator0` path is used
+- Controlling a Fischer Panda generator that is connected through CAN-bus; the `com.victronenergy.generator.startstop0/FischerPanda0` is used
 
 Available conditions: 
 - Manual
@@ -28,4 +31,3 @@ You will need to run the localsettings dbus service. Get the code from https://g
 Then, in another terminal, run the dummy battery by starting ./test/dummybattery.py.
 
 And then in a last terminal you can run the project: dbus_generator.py
-
