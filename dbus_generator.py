@@ -3,13 +3,13 @@
 
 from dbus.mainloop.glib import DBusGMainLoop
 import dbus
-import gobject
 import argparse
 import sys
 import os
 import signal
 # Victron packages
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'ext', 'velib_python'))
+from gobjectwrapper import gobject
 from vedbus import VeDbusService
 from ve_utils import exit_on_error
 from dbusmonitor import DbusMonitor
@@ -314,7 +314,7 @@ if __name__ == '__main__':
 						action='store_true')
 	args = parser.parse_args()
 
-	print '-------- dbus_generator, v' + softwareversion + ' is starting up --------'
+	print ('-------- dbus_generator, v' + softwareversion + ' is starting up --------')
 
 	logger = setup_logging(args.debug)
 
