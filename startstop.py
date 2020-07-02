@@ -42,8 +42,13 @@ SYSTEM_SERVICE = 'com.victronenergy.system'
 BATTERY_PREFIX = '/Dc/Battery'
 HISTORY_DAYS = 30
 
+def safe_max(args):
+	try:
+		return max(x for x in args if x is not None)
+	except ValueError:
+		return None
 
-class StartStop:
+class StartStop(object):
 	def __init__(self):
 		self._dbusservice = None
 		self._settings = None
@@ -786,7 +791,7 @@ class StartStop:
 
 		# Highest phase load
 		if self._settings['acloadmeasuerment'] == 2:
-			values['acload'] = max(loadOnAcOut)
+			values['acload'] = safe_max(loadOnAcOut)
 
 		# AC input 1
 		activein = self._dbusmonitor.get_value(vebus_service, '/Ac/ActiveIn/ActiveInput')
@@ -808,10 +813,10 @@ class StartStop:
 		# /Alarms/Overload... but when connected to vebus alarms are
 		# splitted in three phases and published to /Alarms/LX/Overload...
 		if values['inverteroverload'] == None:
-			values['inverteroverload'] = max(inverterOverload)
+			values['inverteroverload'] = safe_max(inverterOverload)
 
 		if values['inverterhightemp'] == None:
-			values['inverterhightemp'] = max(inverterHighTemp)
+			values['inverterhightemp'] = safe_max(inverterHighTemp)
 
 		return values
 

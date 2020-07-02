@@ -35,8 +35,7 @@ class RelayGenerator(StartStop):
 	def _remote_setup(self):
 		self.enable()
 		# Make sure that the relay polarity is set to normally open.
-		polarity = self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Polarity')
-		if polarity == 1:
+		if self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Polarity') == 1:
 			self._dbusmonitor.set_value('com.victronenergy.settings', '/Settings/Relay/Polarity', 0)
 
 	def remove(self):

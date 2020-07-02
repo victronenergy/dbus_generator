@@ -7,7 +7,7 @@ class BaseEnum(object):
 
 def enum(**kw):
 	c = type('Enum', (BaseEnum,), kw)
-	c._lookup = { x.lower(): y for x, y in kw.iteritems() }
+	c._lookup = { x.lower(): y for x, y in kw.items() }
 	return c
 
 

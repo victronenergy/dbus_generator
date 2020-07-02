@@ -1,13 +1,14 @@
-#!/usr/bin/python -u
+#!/usr/bin/python3 -u
 # -*- coding: utf-8 -*-
 
 from dbus.mainloop.glib import DBusGMainLoop
 import dbus
-import gobject
 import argparse
 import sys
 import os
 import signal
+from gi.repository import GLib
+
 # Victron packages
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'ext', 'velib_python'))
 from vedbus import VeDbusService
@@ -190,7 +191,7 @@ class Generator:
 		for service, instance in self._dbusmonitor.get_service_list().items():
 				self._device_added(service, instance)
 
-		gobject.timeout_add(1000, exit_on_error, self._handletimertick)
+		GLib.timeout_add(1000, exit_on_error, self._handletimertick)
 
 	def _handlechangedsetting(self, setting, oldvalue, newvalue):
 		for i in self._instances:
@@ -314,7 +315,7 @@ if __name__ == '__main__':
 						action='store_true')
 	args = parser.parse_args()
 
-	print '-------- dbus_generator, v' + softwareversion + ' is starting up --------'
+	print ('-------- dbus_generator, v' + softwareversion + ' is starting up --------')
 
 	logger = setup_logging(args.debug)
 
@@ -325,5 +326,5 @@ if __name__ == '__main__':
 	signal.signal(signal.SIGTERM, generator.terminate)
 
 	# Start and run the mainloop
-	mainloop = gobject.MainLoop()
+	mainloop = GLib.MainLoop()
 	mainloop.run()

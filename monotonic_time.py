@@ -101,4 +101,4 @@ def monotonic_time_win32(impl=None):
 
 
 if __name__ == "__main__":
-    print monotonic_time().to_seconds_double()
+    print(monotonic_time().to_seconds_double())
