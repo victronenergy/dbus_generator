@@ -87,4 +87,4 @@ class FischerPandaGenerator(StartStop):
 		# because the generator clears the error when switched off
 		if error in [Errors.REMOTEDISABLED, Errors.REMOTEINFAULT]:
 			return
-		self._dbusmonitor.get_item(self._remoteservice, '/Start').set_value(value)
+		self._dbusmonitor.set_value(self._remoteservice, '/Start', value)
