@@ -13,7 +13,7 @@ sys.path.insert(0, test_dir)
 sys.path.insert(1, os.path.join(test_dir, '..', 'ext', 'velib_python', 'test'))
 sys.path.insert(1, os.path.join(test_dir, '..'))
 import dbus_generator
-import gobject
+import mock_glib
 from logger import setup_logging
 from mock_dbus_monitor import MockDbusMonitor
 from mock_dbus_service import MockDbusService
@@ -39,15 +39,15 @@ class TestGeneratorBase(unittest.TestCase):
 		unittest.TestCase.__init__(self, methodName)
 
 	def setUp(self):
-		gobject.timer_manager.reset()
+		mock_glib.timer_manager.reset()
 		self._generator_ = MockGenerator()
 		self._monitor = self._generator_._dbusmonitor
 
 	def _update_values(self, interval=1000):
 		if not self._service:
 			self._service = self._generator_._dbusservice
-		gobject.timer_manager.add_terminator(interval)
-		gobject.timer_manager.start()
+		mock_glib.timer_manager.add_terminator(interval)
+		mock_glib.timer_manager.start()
 
 	def _add_device(self, service, values, connected=True, product_name='dummy', connection='dummy', instance=0):
 		values['/Connected'] = 1 if connected else 0
@@ -119,16 +119,6 @@ class TestGenerator(TestGeneratorBase):
 				'/Ac/ConsumptionOnInput/L1/Power': 150,
 				'/Ac/ConsumptionOnInput/L2/Power': 150,
 				'/Ac/ConsumptionOnInput/L3/Power': 150,
-				'/Ac/PvOnOutput/L1/Power': 150,
-				'/Ac/PvOnOutput/L2/Power': 150,
-				'/Ac/PvOnOutput/L3/Power': 150,
-				'/Ac/PvOnGrid/L1/Power': 150,
-				'/Ac/PvOnGrid/L2/Power': 150,
-				'/Ac/PvOnGrid/L3/Power': 150,
-				'/Ac/PvOnGenset/L1/Power': 0,
-				'/Ac/PvOnGenset/L2/Power': 0,
-				'/Ac/PvOnGenset/L3/Power': 0,
-				'/Ac/PvOnGenset/Total/Power': 0,
 				'/Dc/Pv/Power': 0,
 				'/Dc/Battery/Current': 10,
 				'/Dc/Battery/Voltage': 14.4,
@@ -172,7 +162,6 @@ class TestGenerator(TestGeneratorBase):
 				'/Ac/Out/L1/P': 500,
 				'/Ac/Out/L2/P': 500,
 				'/Ac/Out/L3/P': 500,
-				'/Ac/Out/P': 1500,
 				'/Ac/ActiveIn/ActiveInput': 1,
 				'/Ac/ActiveIn/Connected': 0,
 				'/Soc': 87
@@ -216,7 +205,6 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
-		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/P', 2100)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/Connected', 1)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/ActiveInput', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
@@ -246,17 +234,11 @@ class TestGenerator(TestGeneratorBase):
 		self._check_values({
 			'/Generator0/State': States.STOPPED
 		})
-		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/P', 500)
-		self._update_values()
-		self._check_values({
-			'/Generator0/State': States.STOPPED
-		})
 
 	def test_acload(self):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
-		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/P', 2100)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 2200)
@@ -278,7 +260,6 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
-		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/P', 2100)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 2200)
@@ -302,7 +283,6 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
-		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/P', 2100)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/StopValue', 800)
@@ -358,7 +338,6 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
-		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/P', 2100)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/StopValue', 800)
@@ -392,7 +371,6 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
-		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/P', 2100)
 		self._set_setting('/Settings/FischerPanda0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/FischerPanda0/AcLoad/Measurement', 1)
 		self._set_setting('/Settings/FischerPanda0/AcLoad/StartValue', 2200)
@@ -426,7 +404,6 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
-		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/P', 2100)
 		self._set_setting('/Settings/FischerPanda0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/FischerPanda0/AcLoad/Measurement', 1)
 		self._set_setting('/Settings/FischerPanda0/AcLoad/StartValue', 2200)
@@ -658,7 +635,7 @@ class TestGenerator(TestGeneratorBase):
 		})
 
 		self._remove_device("com.victronenergy.vebus.ttyO1")
-		self._monitor.set_value('com.victronenergy.system', '/VebusService', [])
+		self._monitor.set_value('com.victronenergy.system', '/VebusService', None)
 
 		self._update_values(300000)
 		self._check_values({
@@ -690,7 +667,7 @@ class TestGenerator(TestGeneratorBase):
 			'/Generator0/State': States.RUNNING
 		})
 		self._remove_device("com.victronenergy.vebus.ttyO1")
-		self._monitor.set_value('com.victronenergy.system', '/VebusService', [])
+		self._monitor.set_value('com.victronenergy.system', '/VebusService', None)
 
 		self._update_values(300000)
 		self._check_values({
@@ -719,7 +696,7 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/AcLoad/StopTimer', 0)
 
 		self._remove_device("com.victronenergy.vebus.ttyO1")
-		self._monitor.set_value('com.victronenergy.system', '/VebusService', [])
+		self._monitor.set_value('com.victronenergy.system', '/VebusService', None)
 
 		self._update_values(299000)
 		self._check_values({
@@ -745,7 +722,7 @@ class TestGenerator(TestGeneratorBase):
 			'/Generator0/State': States.RUNNING
 		})
 
-		self._monitor.set_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement', [])
+		self._monitor.set_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement', None)
 		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', None)
 		self._update_values(300000)
 		self._check_values({
@@ -771,8 +748,8 @@ class TestGenerator(TestGeneratorBase):
 			'/Generator0/State': States.RUNNING
 		})
 
-		self._monitor.set_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement', [])
-		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', [])
+		self._monitor.set_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement', None)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', None)
 
 		self._update_values(300000)
 		self._check_values({
@@ -798,7 +775,7 @@ class TestGenerator(TestGeneratorBase):
 			'/Generator0/State': States.STOPPED
 		})
 
-		self._monitor.set_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement', [])
+		self._monitor.set_value('com.victronenergy.system', '/AutoSelectedBatteryMeasurement', None)
 		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', None)
 
 		self._update_values(299000)
@@ -1079,4 +1056,7 @@ class TestGenerator(TestGeneratorBase):
 
 
 if __name__ == '__main__':
+	# patch dbus_generator with mock glib
+	dbus_generator.GLib = mock_glib
+
 	unittest.main()
