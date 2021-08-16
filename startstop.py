@@ -172,6 +172,7 @@ class StartStop(object):
 		# Set timezone to user selected timezone
 		tz = self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/System/TimeZone')
 		environ['TZ'] = tz if tz else 'UTC'
+		time.tzset()
 
 		self.log_info('Start/stop instance created for %s.' % self._remoteservice)
 		self._remote_setup()
