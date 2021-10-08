@@ -123,12 +123,12 @@ class Generator:
 			'acloadenabled': ['/Settings/{0}/AcLoad/Enabled', 0, 0, 1],
 			# Measuerement, 0 = Total AC consumption, 1 = AC on inverter output, 2 = Single phase
 			'acloadmeasuerment': ['/Settings/{0}/AcLoad/Measurement', 0, 0, 100],
-			'acloadstart': ['/Settings/{0}/AcLoad/StartValue', 1600, 5, 100000],
-			'acloadstop': ['/Settings/{0}/AcLoad/StopValue', 800, 0, 100000],
+			'acloadstart': ['/Settings/{0}/AcLoad/StartValue', 1600, 5, 1000000],
+			'acloadstop': ['/Settings/{0}/AcLoad/StopValue', 800, 0, 1000000],
 			'acloadstarttimer': ['/Settings/{0}/AcLoad/StartTimer', 20, 0, 10000],
 			'acloadstoptimer': ['/Settings/{0}/AcLoad/StopTimer', 20, 0, 10000],
-			'qh_acloadstart': ['/Settings/{0}/AcLoad/QuietHoursStartValue', 1900, 0, 100000],
-			'qh_acloadstop': ['/Settings/{0}/AcLoad/QuietHoursStopValue', 1200, 0, 100000],
+			'qh_acloadstart': ['/Settings/{0}/AcLoad/QuietHoursStartValue', 1900, 0, 1000000],
+			'qh_acloadstop': ['/Settings/{0}/AcLoad/QuietHoursStopValue', 1200, 0, 1000000],
 			# VE.Bus high temperature
 			'inverterhightempenabled': ['/Settings/{0}/InverterHighTemp/Enabled', 0, 0, 1],
 			'inverterhightempstarttimer': ['/Settings/{0}/InverterHighTemp/StartTimer', 20, 0, 10000],
