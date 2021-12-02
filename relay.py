@@ -51,4 +51,4 @@ class RelayGenerator(StartStop):
 		return self._dbusmonitor.get_value(self._remoteservice, '/Relay/0/State')
 
 	def _set_remote_switch_state(self, value):
-		self._dbusmonitor.set_value(self._remoteservice, '/Relay/0/State', value)
+		self._dbusmonitor.set_value_async(self._remoteservice, '/Relay/0/State', value)
