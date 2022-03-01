@@ -169,10 +169,6 @@ class StartStop(object):
 		self._dbusmonitor = dbusmonitor
 		self._remoteservice = remoteservice
 		self._name = name
-		# Set timezone to user selected timezone
-		tz = self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/System/TimeZone')
-		environ['TZ'] = tz if tz else 'UTC'
-		time.tzset()
 
 		self.log_info('Start/stop instance created for %s.' % self._remoteservice)
 		self._remote_setup()
@@ -283,10 +279,6 @@ class StartStop(object):
 
 		if dbusPath == '/VebusService':
 			self._determineservices()
-
-		# Update env timezone when setting changes
-		if dbusPath == '/Settings/System/TimeZone':
-			environ['TZ'] = changes['Value'] if changes['Value'] else 'UTC'
 
 	def handlechangedsetting(self, setting, oldvalue, newvalue):
 		if self._dbusservice is None:

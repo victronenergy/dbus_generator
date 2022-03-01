@@ -181,6 +181,11 @@ class Generator:
 		self._dbusmonitor = self._create_dbus_monitor(dbus_tree, valueChangedCallback=self._dbus_value_changed,
 				deviceAddedCallback=self._device_added, deviceRemovedCallback=self._device_removed)
 
+		# Set timezone to user selected timezone
+		tz = self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/System/TimeZone')
+		os.environ['TZ'] = tz if tz else 'UTC'
+		time.tzset()
+
 		# Create dbus service
 		# Paths for each instance will be added to this service like:
 		# com.victronenergy.generator.startstop0/FischerPanda0/State
@@ -220,6 +225,11 @@ class Generator:
 				self._remove_device(dbusServiceName)
 			else:
 				self._add_device(dbusServiceName)
+
+		# Update env timezone when setting changes
+		if dbusPath == '/Settings/System/TimeZone':
+			os.environ['TZ'] = changes['Value'] if changes['Value'] else 'UTC'
+			time.tzset()
 
 		for i in self._instances:
 			self._instances[i].dbus_value_changed(dbusServiceName, dbusPath, options, changes, deviceInstance)
