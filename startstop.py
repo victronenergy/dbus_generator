@@ -180,17 +180,17 @@ class StartStop(object):
 		# also encompassing a Stopped state.
 		self._dbusservice.add_path('/RunningByConditionCode', value=None)
 		# Error
-		self._dbusservice.add_path('/Error', value=None, gettextcallback=self._gettext)
+		self._dbusservice.add_path('/Error', value=None, gettextcallback=lambda p, v: Errors.get_description(v))
 		# Condition that made the generator start
 		self._dbusservice.add_path('/RunningByCondition', value=None)
 		# Runtime
-		self._dbusservice.add_path('/Runtime', value=None, gettextcallback=self._gettext)
+		self._dbusservice.add_path('/Runtime', value=None, gettextcallback=self._seconds_to_text)
 		# Today runtime
-		self._dbusservice.add_path('/TodayRuntime', value=None, gettextcallback=self._gettext)
+		self._dbusservice.add_path('/TodayRuntime', value=None, gettextcallback=self._seconds_to_text)
 		# Test run runtime
-		self._dbusservice.add_path('/TestRunIntervalRuntime', value=None , gettextcallback=self._gettext)
+		self._dbusservice.add_path('/TestRunIntervalRuntime', value=None , gettextcallback=self._seconds_to_text)
 		# Next test run date, values is 0 for test run disabled
-		self._dbusservice.add_path('/NextTestRun', value=None, gettextcallback=self._gettext)
+		self._dbusservice.add_path('/NextTestRun', value=None, gettextcallback=lambda p, v: datetime.datetime.fromtimestamp(v).strftime('%c'))
 		# Next test run is needed 1, not needed 0
 		self._dbusservice.add_path('/SkipTestRun', value=None)
 		# Manual start
@@ -307,21 +307,10 @@ class StartStop(object):
 	def dbus_name_owner_changed(self, name, oldowner, newowner):
 		self._determineservices()
 
-	def _gettext(self, path, value):
-		path = path.replace("/" + self._name, '')
-
-		if path == '/Error':
-			return Errors.get_description(value)
-		if path == '/NextTestRun':
-			# Locale format date
-			d = datetime.datetime.fromtimestamp(value)
-			return d.strftime('%c')
-		elif path in ['/Runtime', '/TestRunIntervalRuntime', '/TodayRuntime']:
+	def _seconds_to_text(self, path, value):
 			m, s = divmod(value, 60)
 			h, m = divmod(m, 60)
 			return '%dh, %dm, %ds' % (h, m, s)
-		else:
-			return str(value)
 
 	def log_info(self, msg):
 		logging.info(self._name + ': %s' % msg)
