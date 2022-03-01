@@ -24,7 +24,7 @@ import fischerpanda
 
 softwareversion = '1.4.6'
 
-class Generator:
+class Generator(object):
 	def __init__(self):
 		self._exit = False
 		self._instances = {}

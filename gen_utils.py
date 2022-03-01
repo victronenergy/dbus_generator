@@ -11,7 +11,7 @@ def enum(**kw):
 	return c
 
 
-class Errors:
+class Errors(object):
 	NONE, REMOTEDISABLED, REMOTEINFAULT = range(3)
 	@staticmethod
 	def get_description(value):
@@ -26,7 +26,7 @@ class Errors:
 			pass
 		return d
 
-class States:
+class States(object):
 	STOPPED = 0
 	RUNNING = 1
 	ERROR = 10
@@ -44,7 +44,7 @@ class States:
 			pass
 		return d
 
-class SettingsPrefix:
+class SettingsPrefix(object):
 	def __init__(self, settings, prefix):
 		self._settings = settings
 		self._prefix = prefix
@@ -58,7 +58,7 @@ class SettingsPrefix:
 	def __setitem__(self, setting, value):
 		self._settings[setting + self._prefix] = value
 
-class DBusServicePrefix:
+class DBusServicePrefix(object):
 	def __init__(self, service, prefix):
 		self._service = service
 		self._prefix = "/" + prefix
