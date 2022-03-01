@@ -8,6 +8,8 @@ from gen_utils import dummy
 
 remoteprefix = 'com.victronenergy.system'
 name = "Generator0"
+device_instance = 0
+
 # List of the service/paths we need to monitor
 monitoring = {
 	'com.victronenergy.settings': {
@@ -25,9 +27,9 @@ def check_device(dbusmonitor, dbuspath):
 	# return false.
 	return False
 
-def create(dbusmonitor, dbusservice, remoteservice, settings):
-	i = RelayGenerator()
-	i.set_sources(dbusmonitor, dbusservice, settings, name, remoteservice)
+def create(dbusmonitor, remoteservice, settings, instance):
+	i = RelayGenerator(instance)
+	i.set_sources(dbusmonitor, settings, name, remoteservice)
 	return i
 
 class RelayGenerator(StartStop):

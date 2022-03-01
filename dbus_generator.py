@@ -21,8 +21,7 @@ from gen_utils import dummy
 import time
 import relay
 import fischerpanda
-
-softwareversion = '1.4.6'
+from version import softwareversion
 
 class Generator(object):
 	def __init__(self):
@@ -186,12 +185,6 @@ class Generator(object):
 		os.environ['TZ'] = tz if tz else 'UTC'
 		time.tzset()
 
-		# Create dbus service
-		# Paths for each instance will be added to this service like:
-		# com.victronenergy.generator.startstop0/FischerPanda0/State
-		# com.victronenergy.generator.startstop0/Generator0/State
-		self._dbusservice = self._create_dbus_service()
-
 		# Call device_added for all existing devices at startup.
 		for service, instance in self._dbusmonitor.get_service_list().items():
 				self._device_added(service, instance)
@@ -255,8 +248,7 @@ class Generator(object):
 			# Check and create start/stop instance for the device
 			if i.check_device(self._dbusmonitor, service):
 				self._instances[service] = i.create(self._dbusmonitor,
-												self._dbusservice,
-												service, self._settings)
+												service, self._settings, i.device_instance)
 
 	def _handle_builtin_relay(self, dbuspath):
 		function = self._dbusmonitor.get_value('com.victronenergy.settings', dbuspath)
@@ -267,9 +259,8 @@ class Generator(object):
 		# otherwise remove the instance if exists
 		if function == 1:
 			self._instances[relaynr] = relay.create(self._dbusmonitor,
-													self._dbusservice,
 													relayservice,
-													self._settings)
+													self._settings, len(self._instances))
 		elif relaynr in self._instances:
 			self._instances[relaynr].remove()
 			del self._instances[relaynr]
@@ -300,20 +291,6 @@ class Generator(object):
 			traceback.print_exc()
 			sys.exit(1)
 		return True
-
-	def _create_dbus_service(self):
-		dbusservice = VeDbusService("com.victronenergy.generator.startstop0")
-		dbusservice.add_mandatory_paths(
-			processname=__file__,
-			processversion=softwareversion,
-			connection='generator',
-			deviceinstance=0,
-			productid=None,
-			productname=None,
-			firmwareversion=None,
-			hardwareversion=None,
-			connected=1)
-		return dbusservice
 
 if __name__ == '__main__':
 	# Argument parsing

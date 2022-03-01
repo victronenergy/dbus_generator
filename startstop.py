@@ -19,7 +19,8 @@ import os
 import logging
 from os import environ
 import monotonic_time
-from gen_utils import DBusServicePrefix, SettingsPrefix, Errors, States, enum
+from gen_utils import SettingsPrefix, Errors, States, enum
+from gen_utils import create_dbus_service
 # Victron packages
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'ext', 'velib_python'))
 from ve_utils import exit_on_error
@@ -49,13 +50,14 @@ def safe_max(args):
 		return None
 
 class StartStop(object):
-	def __init__(self):
+	def __init__(self, instance):
 		self._dbusservice = None
 		self._settings = None
 		self._dbusmonitor = None
 		self._remoteservice = None
 		self._name = None
 		self._enabled = False
+		self._instance = instance
 
 		# One second per retry
 		self.RETRIES_ON_ERROR = 300
@@ -163,8 +165,7 @@ class StartStop(object):
 			}
 		}
 
-	def set_sources(self, dbusmonitor, dbusservice, settings, name, remoteservice):
-		self._dbusservice = DBusServicePrefix(dbusservice, name)
+	def set_sources(self, dbusmonitor, settings, name, remoteservice):
 		self._settings = SettingsPrefix(settings, name)
 		self._dbusmonitor = dbusmonitor
 		self._remoteservice = remoteservice
@@ -173,7 +174,9 @@ class StartStop(object):
 		self.log_info('Start/stop instance created for %s.' % self._remoteservice)
 		self._remote_setup()
 
-	def _create_paths(self):
+	def _create_service(self):
+		self._dbusservice = self._create_dbus_service()
+
 		# State: None = invalid, 0 = stopped, 1 = running
 		self._dbusservice.add_path('/State', value=None)
 		# RunningByConditionCode: Numeric Companion to /RunningByCondition below, but
@@ -225,7 +228,7 @@ class StartStop(object):
 		if self._enabled:
 			return
 		self.log_info('Enabling auto start/stop and taking control of remote switch')
-		self._create_paths()
+		self._create_service()
 		self._determineservices()
 		self._update_remote_switch()
 		self._enabled = True
@@ -234,27 +237,16 @@ class StartStop(object):
 		if not self._enabled:
 			return
 		self.log_info('Disabling auto start/stop, releasing control of remote switch')
-		self._remove_paths()
+		self._remove_service()
 		self._enabled = False
 
 	def remove(self):
 		self.disable()
 		self.log_info('Removed from start/stop instances')
 
-	def _remove_paths(self):
-		self._dbusservice.__delitem__('/State')
-		self._dbusservice.__delitem__('/RunningByConditionCode')
-		self._dbusservice.__delitem__('/Error')
-		self._dbusservice.__delitem__('/RunningByCondition')
-		self._dbusservice.__delitem__('/Runtime')
-		self._dbusservice.__delitem__('/TodayRuntime')
-		self._dbusservice.__delitem__('/TestRunIntervalRuntime')
-		self._dbusservice.__delitem__('/NextTestRun')
-		self._dbusservice.__delitem__('/SkipTestRun')
-		self._dbusservice.__delitem__('/ManualStart')
-		self._dbusservice.__delitem__('/ManualStartTimer')
-		self._dbusservice.__delitem__('/QuietHours')
-		self._dbusservice.__delitem__('/Alarms/NoGeneratorAtAcIn')
+	def _remove_service(self):
+		self._dbusservice.__del__()
+		self._dbusservice = None
 
 	def device_added(self, dbusservicename, instance):
 		self._determineservices()
@@ -948,4 +940,4 @@ class StartStop(object):
 		raise Exception('This function should be overridden')
 
 	def _create_dbus_service(self):
-		raise Exception('This function should be overridden')
+		return create_dbus_service(self._instance)

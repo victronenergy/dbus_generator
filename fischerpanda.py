@@ -8,6 +8,7 @@ from gen_utils import dummy, Errors
 remoteprefix = 'com.victronenergy.genset'
 name = "FischerPanda0"
 productid = 0xB040
+device_instance = 1
 
 # List of the service/paths we need to monitor
 monitoring = {
@@ -35,9 +36,9 @@ def check_device(dbusmonitor, dbusservicename):
 		return False
 	return True
 
-def create(dbusmonitor, dbusservice, remoteservice, settings):
-	i = FischerPandaGenerator()
-	i.set_sources(dbusmonitor, dbusservice, settings, name, remoteservice)
+def create(dbusmonitor, remoteservice, settings, instance):
+	i = FischerPandaGenerator(instance)
+	i.set_sources(dbusmonitor, settings, name, remoteservice)
 	return i
 
 class FischerPandaGenerator(StartStop):

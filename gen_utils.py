@@ -1,3 +1,10 @@
+import sys
+import os
+import dbus
+from vedbus import VeDbusService
+
+from version import softwareversion
+
 dummy = {'code': None, 'whenToLog': 'configChange', 'accessLevel': None}
 
 class BaseEnum(object):
@@ -58,21 +65,19 @@ class SettingsPrefix(object):
 	def __setitem__(self, setting, value):
 		self._settings[setting + self._prefix] = value
 
-class DBusServicePrefix(object):
-	def __init__(self, service, prefix):
-		self._service = service
-		self._prefix = "/" + prefix
+def create_dbus_service(instance):
+	# Use a private bus, so we can have multiple services
+	bus = dbus.Bus.get_session(private=True) if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else dbus.Bus.get_system(private=True)
 
-	def add_path(self, path, value, description="", writeable=False,
-					onchangecallback=None, gettextcallback=None):
-		self._service.add_path(self._prefix + path, value, description,
-							writeable, onchangecallback, gettextcallback)
-
-	def __delitem__(self, path):
-		self._service.__delitem__(self._prefix + path)
-
-	def __getitem__(self, path):
-			return self._service[self._prefix + path]
-
-	def __setitem__(self, path, value):
-		self._service[self._prefix + path] = value
+	dbusservice = VeDbusService("com.victronenergy.generator.startstop{}".format(instance), bus=bus)
+	dbusservice.add_mandatory_paths(
+		processname=sys.argv[0],
+		processversion=softwareversion,
+		connection='generator',
+		deviceinstance=instance,
+		productid=None,
+		productname=None,
+		firmwareversion=None,
+		hardwareversion=None,
+		connected=1)
+	return dbusservice
