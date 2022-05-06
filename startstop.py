@@ -50,6 +50,7 @@ def safe_max(args):
 		return None
 
 class StartStop(object):
+	_driver = None
 	def __init__(self, instance):
 		self._dbusservice = None
 		self._settings = None
@@ -177,6 +178,8 @@ class StartStop(object):
 	def _create_service(self):
 		self._dbusservice = self._create_dbus_service()
 
+		# The driver used for this start/stop service
+		self._dbusservice.add_path('/Type', value=self._driver)
 		# State: None = invalid, 0 = stopped, 1 = running
 		self._dbusservice.add_path('/State', value=None)
 		# RunningByConditionCode: Numeric Companion to /RunningByCondition below, but

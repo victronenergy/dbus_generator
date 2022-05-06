@@ -42,6 +42,7 @@ def create(dbusmonitor, remoteservice, settings, instance):
 	return i
 
 class FischerPandaGenerator(StartStop):
+	_driver = 1 # FischerPanda
 	def _remote_setup(self):
 		# Enable if autostart is enabled for FischerPanda, later checks will be done by
 		# the dbus_value_changed event.

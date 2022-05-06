@@ -33,6 +33,7 @@ def create(dbusmonitor, remoteservice, settings, instance):
 	return i
 
 class RelayGenerator(StartStop):
+	_driver = 0 # Relay
 
 	def _remote_setup(self):
 		self.enable()
