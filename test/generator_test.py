@@ -132,7 +132,6 @@ class TestGenerator(TestGeneratorBase):
 			values={
 				'/Settings/Relay/Function': 1,
 				'/Settings/System/TimeZone': 'Europe/Berlin',
-				'/Settings/Services/FischerPandaAutoStartStop': 1
 			})
 
 		self._add_device('com.victronenergy.genset.socketcan_can1_di0_uc0',

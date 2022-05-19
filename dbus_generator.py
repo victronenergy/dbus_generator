@@ -232,6 +232,7 @@ class Generator(object):
 			self._handle_builtin_relay('/Settings/Relay/Function')
 		for i in self._instances:
 			self._instances[i].device_removed(dbusservicename, instance)
+		self._remove_device(dbusservicename)
 
 	def _create_dbus_monitor(self, *args, **kwargs):
 		return DbusMonitor(*args, **kwargs)

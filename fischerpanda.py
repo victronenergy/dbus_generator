@@ -18,9 +18,6 @@ monitoring = {
 		'/ErrorCode': dummy,
 		'/ProductId': dummy,
 		'/Start': dummy
-		},
-	'com.victronenergy.settings': {
-		'/Settings/Services/FischerPandaAutoStartStop': dummy
 		}
 	}
 
@@ -28,8 +25,6 @@ monitoring = {
 def check_device(dbusmonitor, dbusservicename):
 	# Check the product ID to determine if it's a Fischer Panda genset
 	# and also check if connected.
-	if remoteprefix not in dbusservicename:
-		return False
 	if dbusmonitor.get_value(dbusservicename, '/ProductId') != productid:
 		return False
 	if dbusmonitor.get_value(dbusservicename, '/Connected') != 1:
@@ -44,11 +39,7 @@ def create(dbusmonitor, remoteservice, settings, instance):
 class FischerPandaGenerator(StartStop):
 	_driver = 1 # FischerPanda
 	def _remote_setup(self):
-		# Enable if autostart is enabled for FischerPanda, later checks will be done by
-		# the dbus_value_changed event.
-		if self._dbusmonitor.get_value('com.victronenergy.settings',
-									'/Settings/Services/FischerPandaAutoStartStop') == 1:
-			self.enable()
+		self.enable()
 
 	def _check_remote_status(self):
 		error = self._dbusservice['/Error']
@@ -70,18 +61,6 @@ class FischerPandaGenerator(StartStop):
 		if self.get_error() in [Errors.REMOTEDISABLED, Errors.REMOTEINFAULT]:
 			return 0
 		return self._dbusmonitor.get_value(self._remoteservice, '/Start')
-
-	def dbus_value_changed(self, dbusServiceName, dbusPath, options, changes, deviceInstance):
-		# Check if the user enabled or disabled the auto start/stop functionality for the Fischer Panda.
-		value = None
-		if dbusServiceName == 'com.victronenergy.settings':
-			if dbusPath == '/Settings/Services/FischerPandaAutoStartStop':
-				value = self._dbusmonitor.get_value(dbusServiceName, dbusPath)
-		if value == 1:
- 			self.enable()
-		elif value == 0:
-			self.disable()
-		StartStop.dbus_value_changed(self, dbusServiceName, dbusPath, options, changes, deviceInstance)
 
 	def _set_remote_switch_state(self, value):
 		error = self._dbusservice['/Error']
