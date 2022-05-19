@@ -207,6 +207,8 @@ class StartStop(object):
 		self._dbusservice.add_path('/QuietHours', value=None)
 		# Alarms
 		self._dbusservice.add_path('/Alarms/NoGeneratorAtAcIn', value=None)
+		# Autostart
+		self._dbusservice.add_path('/AutoStartEnabled', value=None, writeable=True, onchangecallback=self._set_autostart)
 
 		# We need to set the values after creating the paths to trigger the 'onValueChanged' event for the gui
 		# otherwise the gui will report the paths as invalid if we remove and recreate the paths without
@@ -224,8 +226,13 @@ class StartStop(object):
 		self._dbusservice['/ManualStartTimer'] = 0
 		self._dbusservice['/QuietHours'] = 0
 		self._dbusservice['/Alarms/NoGeneratorAtAcIn'] = 0
+		self._dbusservice['/AutoStartEnabled'] = self._settings['autostart']
 
-
+	def _set_autostart(self, path, value):
+		if 0 <= value <= 1:
+			self._settings['autostart'] = int(value)
+			return True
+		return False
 
 	def enable(self):
 		if self._enabled:
@@ -295,7 +302,8 @@ class StartStop(object):
 					self._condition_stack[condition]['retries'] = 0
 
 		if s == 'autostart':
-				self.log_info('Autostart function %s.' % ('enabled' if newvalue == 1 else 'disabled'))
+			self.log_info('Autostart function %s.' % ('enabled' if newvalue == 1 else 'disabled'))
+			self._dbusservice['/AutoStartEnabled'] = self._settings['autostart']
 
 		if self._dbusservice is not None and s == 'testruninterval':
 			self._dbusservice['/TestRunIntervalRuntime'] = self._interval_runtime(
