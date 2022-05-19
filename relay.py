@@ -22,7 +22,7 @@ monitoring = {
 	}
 
 # Determine if a startstop instance can be created for this device
-def check_device(dbusmonitor, dbuspath):
+def check_device(dbusmonitor, service):
 	# Built-in relay has not its own service so this check must always
 	# return false.
 	return False

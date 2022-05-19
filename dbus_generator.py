@@ -220,7 +220,7 @@ class Generator(object):
 				self._add_device(dbusServiceName)
 
 		# Update env timezone when setting changes
-		if dbusPath == '/Settings/System/TimeZone':
+		if (dbusServiceName, dbusPath) == ('com.victronenergy.settings', '/Settings/System/TimeZone'):
 			os.environ['TZ'] = changes['Value'] if changes['Value'] else 'UTC'
 			time.tzset()
 
@@ -260,7 +260,7 @@ class Generator(object):
 		if function == 1:
 			self._instances[relaynr] = relay.create(self._dbusmonitor,
 													relayservice,
-													self._settings, len(self._instances))
+													self._settings, relay.device_instance)
 		elif relaynr in self._instances:
 			self._instances[relaynr].remove()
 			del self._instances[relaynr]

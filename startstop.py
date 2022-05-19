@@ -269,6 +269,8 @@ class StartStop(object):
 	def dbus_value_changed(self, dbusServiceName, dbusPath, options, changes, deviceInstance):
 		if self._dbusservice is None:
 			return
+		if dbusServiceName != 'com.victronenergy.system':
+			return
 		if dbusPath == '/AutoSelectedBatteryMeasurement' and self._settings['batterymeasurement'] == 'default':
 			self._determineservices()
 
