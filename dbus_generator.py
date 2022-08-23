@@ -83,7 +83,7 @@ class Generator(object):
 
 		# Settings base
 		settingsbase = {
-			'autostart': ['/Settings/{0}/AutoStartEnabled', 1, 0, 1],
+			'autostart': ['/Settings/{0}/AutoStartEnabled', 0, 0, 1],
 			'batterymeasurement': ['/Settings/{0}/Service', '', 0, 0],
 			'accumulateddaily': ['/Settings/{0}/AccumulatedDaily', '', 0, 0, True],
 			'accumulatedtotal': ['/Settings/{0}/AccumulatedTotal', 0, 0, 0, True],
