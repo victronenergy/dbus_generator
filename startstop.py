@@ -309,9 +309,6 @@ class StartStop(object):
 			self._dbusservice['/TestRunIntervalRuntime'] = self._interval_runtime(
 															self._settings['testruninterval'])
 
-	def dbus_name_owner_changed(self, name, oldowner, newowner):
-		self._determineservices()
-
 	def _seconds_to_text(self, path, value):
 			m, s = divmod(value, 60)
 			h, m = divmod(m, 60)
