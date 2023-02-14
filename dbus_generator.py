@@ -34,7 +34,6 @@ class Generator(object):
 			'com.victronenergy.settings': {
 				'/Settings/System/TimeZone': dummy,
 				'/Settings/System/AcInput1': dummy,
-				'/Settings/System/AcInput2': dummy,
 				'/Settings/Relay/Polarity': dummy
 				},
 			'com.victronenergy.battery': {
@@ -121,7 +120,7 @@ class Generator(object):
 			# AC load
 			'acloadenabled': ['/Settings/{0}/AcLoad/Enabled', 0, 0, 1],
 			# Measuerement, 0 = Total AC consumption, 1 = AC on inverter output, 2 = Single phase
-			'acloadmeasuerment': ['/Settings/{0}/AcLoad/Measurement', 0, 0, 100],
+			'acloadmeasurement': ['/Settings/{0}/AcLoad/Measurement', 0, 0, 100],
 			'acloadstart': ['/Settings/{0}/AcLoad/StartValue', 1600, 5, 1000000],
 			'acloadstop': ['/Settings/{0}/AcLoad/StopValue', 800, 0, 1000000],
 			'acloadstarttimer': ['/Settings/{0}/AcLoad/StartTimer', 20, 0, 10000],

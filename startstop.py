@@ -17,7 +17,7 @@ import sys
 import json
 import os
 import logging
-from os import environ
+from collections import OrderedDict
 import monotonic_time
 from gen_utils import SettingsPrefix, Errors, States, enum
 from gen_utils import create_dbus_service
@@ -48,6 +48,30 @@ def safe_max(args):
 		return max(x for x in args if x is not None)
 	except ValueError:
 		return None
+
+class Condition(object):
+	def __init__(self, name, monitoring, is_boolean, is_timed):
+		self.name = name
+		self.monitoring = monitoring
+		self.boolean = is_boolean
+		self.timed = is_timed
+
+		self.reached = False
+		self.start_timer = 0
+		self.stop_timer = 0
+		self.valid = True
+		self.enabled = False
+		self.retries = 0
+
+	def __getitem__(self, key):
+		try:
+			return getattr(self, key)
+		except AttributeError:
+			raise KeyError(key)
+
+	def __setitem__(self, key, value):
+		setattr(self, key, value)
+
 
 class StartStop(object):
 	_driver = None
@@ -83,88 +107,23 @@ class StartStop(object):
 			'unabletostart': False
 			}
 
-		self._condition_stack = {
-			'batteryvoltage': {
-				'name': 'batteryvoltage',
-				'reached': False,
-				'boolean': False,
-				'timed': True,
-				'start_timer': 0,
-				'stop_timer': 0,
-				'valid': True,
-				'enabled': False,
-				'retries': 0,
-				'monitoring': 'battery'
-			},
-			'batterycurrent': {
-				'name': 'batterycurrent',
-				'reached': False,
-				'boolean': False,
-				'timed': True,
-				'start_timer': 0,
-				'stop_timer': 0,
-				'valid': True,
-				'enabled': False,
-				'retries': 0,
-				'monitoring': 'battery'
-			},
-			'acload': {
-				'name': 'acload',
-				'reached': False,
-				'boolean': False,
-				'timed': True,
-				'start_timer': 0,
-				'stop_timer': 0,
-				'valid': True,
-				'enabled': False,
-				'retries': 0,
-				'monitoring': 'vebus'
-			},
-			'inverterhightemp': {
-				'name': 'inverterhightemp',
-				'reached': False,
-				'boolean': True,
-				'timed': True,
-				'start_timer': 0,
-				'stop_timer': 0,
-				'valid': True,
-				'enabled': False,
-				'retries': 0,
-				'monitoring': 'vebus'
-			},
-			'inverteroverload': {
-				'name': 'inverteroverload',
-				'reached': False,
-				'boolean': True,
-				'timed': True,
-				'start_timer': 0,
-				'stop_timer': 0,
-				'valid': True,
-				'enabled': False,
-				'retries': 0,
-				'monitoring': 'vebus'
-			},
-			'soc': {
-				'name': 'soc',
-				'reached': False,
-				'boolean': False,
-				'timed': False,
-				'valid': True,
-				'enabled': False,
-				'retries': 0,
-				'monitoring': 'battery'
-			},
-			'stoponac1': {
-				'name': 'stoponac1',
-				'reached': False,
-				'boolean': True,
-				'timed': False,
-				'valid': True,
-				'enabled': False,
-				'retries': 0,
-				'monitoring': 'vebus'
-			}
-		}
+		# Order is important. Conditions are evaluated in the order listed.
+		self._condition_stack = OrderedDict({
+			'soc': Condition('soc', 'battery',
+				is_boolean=False, is_timed=False),
+			'acload': Condition('acload', 'vebus',
+				is_boolean=False, is_timed=True),
+			'batterycurrent': Condition('batterycurrent', 'battery',
+				is_boolean=False, is_timed=True),
+			'batteryvoltage': Condition('batteryvoltage', 'battery',
+				is_boolean=False, is_timed=True),
+			'inverterhightemp': Condition('inverterhightemp', 'vebus',
+				is_boolean=True, is_timed=True),
+			'inverteroverload': Condition('inverteroverload', 'vebus',
+				is_boolean=True, is_timed=True),
+			'stoponac1': Condition('stoponac1', 'vebus',
+				is_boolean=True, is_timed=False)
+		})
 
 	def set_sources(self, dbusmonitor, settings, name, remoteservice):
 		self._settings = SettingsPrefix(settings, name)
@@ -299,10 +258,10 @@ class StartStop(object):
 		if s == 'batterymeasurement':
 			self._determineservices()
 			# Reset retries and valid if service changes
-			for condition in self._condition_stack:
-				if self._condition_stack[condition]['monitoring'] == 'battery':
-					self._condition_stack[condition]['valid'] = True
-					self._condition_stack[condition]['retries'] = 0
+			for condition in self._condition_stack.values():
+				if condition['monitoring'] == 'battery':
+					condition['valid'] = True
+					condition['retries'] = 0
 
 		if s == 'autostart':
 			self.log_info('Autostart function %s.' % ('enabled' if newvalue == 1 else 'disabled'))
@@ -342,7 +301,6 @@ class StartStop(object):
 			self.log_info('Error state cleared, taking control of remote switch.')
 
 		# Conditions will be evaluated in this order
-		conditions = ['soc', 'acload', 'batterycurrent', 'batteryvoltage', 'inverterhightemp', 'inverteroverload', 'stoponac1']
 		start = False
 		startbycondition = None
 		activecondition = self._dbusservice['/RunningByCondition']
@@ -382,13 +340,13 @@ class StartStop(object):
 				start = True
 
 			# Evaluate value conditions
-			for condition in conditions:
-				start = self._evaluate_condition(self._condition_stack[condition], values[condition]) or start
+			for condition, data in self._condition_stack.items():
+				start = self._evaluate_condition(data, values[condition]) or start
 				startbycondition = condition if start and startbycondition is None else startbycondition
 				# Connection lost is set to true if the number of retries of one or more enabled conditions
 				# >= RETRIES_ON_ERROR
-				if self._condition_stack[condition]['enabled']:
-					connection_lost = self._condition_stack[condition]['retries'] >= self.RETRIES_ON_ERROR
+				if data.enabled:
+					connection_lost = data.retries >= self.RETRIES_ON_ERROR
 
 			if self._condition_stack['stoponac1']['reached'] and startbycondition not in ['manual', 'testrun']:
 				start = False
@@ -770,15 +728,15 @@ class StartStop(object):
 			inverterOverload.append(self._dbusmonitor.get_value(vebus_service, ('/Alarms/%s/Overload' % phase)))
 
 		# Toltal consumption
-		if self._settings['acloadmeasuerment'] == 0:
+		if self._settings['acloadmeasurement'] == 0:
 			values['acload'] = sum(filter(None, totalConsumption))
 
 		# Load on inverter AC out
-		if self._settings['acloadmeasuerment'] == 1:
+		if self._settings['acloadmeasurement'] == 1:
 			values['acload'] = sum(filter(None, loadOnAcOut))
 
 		# Highest phase load
-		if self._settings['acloadmeasuerment'] == 2:
+		if self._settings['acloadmeasurement'] == 2:
 			values['acload'] = safe_max(loadOnAcOut)
 
 		# AC input 1
