@@ -50,12 +50,8 @@ def safe_max(args):
 		return None
 
 class Condition(object):
-	def __init__(self, name, monitoring, is_boolean, is_timed):
-		self.name = name
-		self.monitoring = monitoring
-		self.boolean = is_boolean
-		self.timed = is_timed
-
+	def __init__(self, parent):
+		self.parent = parent
 		self.reached = False
 		self.start_timer = 0
 		self.stop_timer = 0
@@ -72,6 +68,162 @@ class Condition(object):
 	def __setitem__(self, key, value):
 		setattr(self, key, value)
 
+	def get_value(self):
+		raise NotImplementedError("get_value")
+
+	@property
+	def vebus_service(self):
+		return self.parent._vebusservice if self.parent._vebusservice else ''
+
+	@property
+	def monitor(self):
+		return self.parent._dbusmonitor
+
+class SocCondition(Condition):
+	name = 'soc'
+	monitoring = 'battery'
+	boolean = False
+	timed = False
+
+	def get_value(self):
+		return self.parent._get_battery().soc
+
+class AcLoadCondition(Condition):
+	name = 'acload'
+	monitoring = 'vebus'
+	boolean = False
+	timed = True
+
+	def get_value(self):
+		loadOnAcOut = []
+		totalConsumption = []
+
+		for phase in ['L1', 'L2', 'L3']:
+			# Get the values directly from the inverter, systemcalc doesn't provide raw inverted power
+			loadOnAcOut.append(self.monitor.get_value(self.vebus_service, ('/Ac/Out/%s/P' % phase)))
+
+			# Calculate total consumption, '/Ac/Consumption/%s/Power' is deprecated
+			c_i = self.monitor.get_value(SYSTEM_SERVICE, ('/Ac/ConsumptionOnInput/%s/Power' % phase))
+			c_o = self.monitor.get_value(SYSTEM_SERVICE, ('/Ac/ConsumptionOnOutput/%s/Power' % phase))
+			totalConsumption.append(sum(filter(None, (c_i, c_o))))
+
+		# Invalidate if vebus is not available
+		if loadOnAcOut[0] == None:
+			return None
+
+		# Total consumption
+		if self.parent._settings['acloadmeasurement'] == 0:
+			return sum(filter(None, totalConsumption))
+
+		# Load on inverter AC out
+		if self.parent._settings['acloadmeasurement'] == 1:
+			return sum(filter(None, loadOnAcOut))
+
+		# Highest phase load
+		if self.parent._settings['acloadmeasurement'] == 2:
+			return safe_max(loadOnAcOut)
+
+class BatteryCurrentCondition(Condition):
+	name = 'batterycurrent'
+	monitoring = 'battery'
+	boolean = False
+	timed = True
+
+	def get_value(self):
+		c = self.parent._get_battery().current
+		if c is not None:
+			c *= -1
+		return c
+
+class BatteryVoltageCondition(Condition):
+	name = 'batteryvoltage'
+	monitoring = 'battery'
+	boolean = False
+	timed = True
+
+	def get_value(self):
+		return self.parent._get_battery().voltage
+
+class InverterTempCondition(Condition):
+	name = 'inverterhightemp'
+	monitoring = 'vebus'
+	boolean = True
+	timed = True
+
+	def get_value(self):
+		v = self.monitor.get_value(self.vebus_service,
+			'/Alarms/HighTemperature')
+
+		# When multi is connected to CAN-bus, alarms are published to
+		# /Alarms/HighTemperature... but when connected to vebus alarms are
+		# splitted in three phases and published to /Alarms/LX/HighTemperature...
+		if v is None:
+			inverterHighTemp = []
+			for phase in ['L1', 'L2', 'L3']:
+				# Inverter alarms must be fetched directly from the inverter service
+				inverterHighTemp.append(self.monitor.get_value(self.vebus_service, ('/Alarms/%s/HighTemperature' % phase)))
+			return safe_max(inverterHighTemp)
+		return v
+
+class InverterOverloadCondition(Condition):
+	name = 'inverteroverload'
+	monitoring = 'vebus'
+	boolean = True
+	timed = True
+
+	def get_value(self):
+		v = self.monitor.get_value(self.vebus_service,
+			'/Alarms/Overload')
+
+		# When multi is connected to CAN-bus, alarms are published to
+		# /Alarms/Overload... but when connected to vebus alarms are
+		# splitted in three phases and published to /Alarms/LX/Overload...
+		if v is None:
+			inverterOverload = []
+			for phase in ['L1', 'L2', 'L3']:
+				# Inverter alarms must be fetched directly from the inverter service
+				inverterOverload.append(self.monitor.get_value(self.vebus_service, ('/Alarms/%s/Overload' % phase)))
+			return safe_max(inverterOverload)
+		return v
+
+class StopOnAc1Condition(Condition):
+	name = 'stoponac1'
+	monitoring = 'vebus'
+	boolean = True
+	timed = False
+
+	def get_value(self):
+		# AC input 1
+		activein = self.monitor.get_value(self.vebus_service,
+			'/Ac/ActiveIn/ActiveInput')
+
+		# Active input is connected
+		connected = self.monitor.get_value(self.vebus_service,
+			'/Ac/ActiveIn/Connected')
+		if None not in (activein, connected):
+			return activein == 0 and connected == 1
+
+		return None
+
+class Battery(object):
+	def __init__(self, monitor, service, prefix):
+		self.monitor = monitor
+		self.service = service
+		self.prefix = prefix
+
+	@property
+	def voltage(self):
+		return self.monitor.get_value(self.service, self.prefix + '/Voltage')
+
+	@property
+	def current(self):
+		return self.monitor.get_value(self.service, self.prefix + '/Current')
+
+	@property
+	def soc(self):
+		# Soc from the device doesn't have the '/Dc/0' prefix like the current and voltage do, but it does
+		# have the same prefix on systemcalc
+		return self.monitor.get_value(self.service, (BATTERY_PREFIX if self.prefix == BATTERY_PREFIX else '') + '/Soc')
 
 class StartStop(object):
 	_driver = None
@@ -109,20 +261,13 @@ class StartStop(object):
 
 		# Order is important. Conditions are evaluated in the order listed.
 		self._condition_stack = OrderedDict({
-			'soc': Condition('soc', 'battery',
-				is_boolean=False, is_timed=False),
-			'acload': Condition('acload', 'vebus',
-				is_boolean=False, is_timed=True),
-			'batterycurrent': Condition('batterycurrent', 'battery',
-				is_boolean=False, is_timed=True),
-			'batteryvoltage': Condition('batteryvoltage', 'battery',
-				is_boolean=False, is_timed=True),
-			'inverterhightemp': Condition('inverterhightemp', 'vebus',
-				is_boolean=True, is_timed=True),
-			'inverteroverload': Condition('inverteroverload', 'vebus',
-				is_boolean=True, is_timed=True),
-			'stoponac1': Condition('stoponac1', 'vebus',
-				is_boolean=True, is_timed=False)
+			SocCondition.name:              SocCondition(self),
+			AcLoadCondition.name:           AcLoadCondition(self),
+			BatteryCurrentCondition.name:   BatteryCurrentCondition(self),
+			BatteryVoltageCondition.name:   BatteryVoltageCondition(self),
+			InverterTempCondition.name:     InverterTempCondition(self),
+			InverterOverloadCondition.name: InverterOverloadCondition(self),
+			StopOnAc1Condition.name:        StopOnAc1Condition(self)
 		})
 
 	def set_sources(self, dbusmonitor, settings, name, remoteservice):
@@ -300,13 +445,11 @@ class StartStop(object):
 			self._errorstate = 0
 			self.log_info('Error state cleared, taking control of remote switch.')
 
-		# Conditions will be evaluated in this order
 		start = False
 		startbycondition = None
 		activecondition = self._dbusservice['/RunningByCondition']
 		today = calendar.timegm(datetime.date.today().timetuple())
 		self._timer_runnning = False
-		values = self._get_updated_values()
 		connection_lost = False
 
 		self._check_quiet_hours()
@@ -341,14 +484,15 @@ class StartStop(object):
 
 			# Evaluate value conditions
 			for condition, data in self._condition_stack.items():
-				start = self._evaluate_condition(data, values[condition]) or start
+				# Don't short-circuit this, _evaluate_condition sets .reached
+				start = self._evaluate_condition(data) or start
 				startbycondition = condition if start and startbycondition is None else startbycondition
 				# Connection lost is set to true if the number of retries of one or more enabled conditions
 				# >= RETRIES_ON_ERROR
 				if data.enabled:
 					connection_lost = data.retries >= self.RETRIES_ON_ERROR
 
-			if self._condition_stack['stoponac1']['reached'] and startbycondition not in ['manual', 'testrun']:
+			if self._condition_stack[StopOnAc1Condition.name].reached and startbycondition not in ['manual', 'testrun']:
 				start = False
 				if self._dbusservice['/State'] == States.RUNNING and activecondition not in ['manual', 'testrun']:
 					self.log_info('AC input 1 available, stopping')
@@ -473,8 +617,9 @@ class StartStop(object):
 
 		return condition['valid']
 
-	def _evaluate_condition(self, condition, value):
+	def _evaluate_condition(self, condition):
 		name = condition['name']
+		value = condition.get_value()
 		setting = ('qh_' if self._dbusservice['/QuietHours'] == 1 else '') + name
 		startvalue = self._settings[setting + 'start'] if not condition['boolean'] else 1
 		stopvalue = self._settings[setting + 'stop'] if not condition['boolean'] else 0
@@ -551,7 +696,7 @@ class StartStop(object):
 		yesterday = today - datetime.timedelta(days=1) # Should deal well with DST
 		now = time.time()
 		runtillbatteryfull = self._settings['testruntillbatteryfull'] == 1
-		soc = self._get_updated_values()['soc']
+		soc = self._condition_stack['soc'].get_value()
 		batteryisfull = runtillbatteryfull and soc == 100
 		duration = 60 if runtillbatteryfull else self._settings['testrunruntime']
 
@@ -686,85 +831,12 @@ class StartStop(object):
 		return summ
 
 	def _get_battery(self):
-		battery = {}
 		if self._settings['batterymeasurement'] == 'default':
-			battery['service'] = SYSTEM_SERVICE
-			battery['prefix'] = BATTERY_PREFIX
-		else:
-			battery['service'] = self._battery_service if self._battery_service else ''
-			battery['prefix'] = self._battery_prefix if self._battery_prefix else ''
+			return Battery(self._dbusmonitor, SYSTEM_SERVICE, BATTERY_PREFIX)
 
-		return battery
-
-	def _get_updated_values(self):
-		battery = self._get_battery()
-		vebus_service = self._vebusservice if self._vebusservice else ''
-		loadOnAcOut = []
-		totalConsumption = []
-		inverterHighTemp = []
-		inverterOverload = []
-
-		values = {
-			'batteryvoltage': self._dbusmonitor.get_value(battery['service'], battery['prefix'] + '/Voltage'),
-			'batterycurrent': self._dbusmonitor.get_value(battery['service'], battery['prefix'] + '/Current'),
-			# Soc from the device doesn't have the '/Dc/0' prefix like the current and voltage do, but it does
-			# have the same prefix on systemcalc
-			'soc': self._dbusmonitor.get_value(battery['service'], (battery['prefix'] if battery['prefix'] == BATTERY_PREFIX else '') + '/Soc'),
-			'inverterhightemp': self._dbusmonitor.get_value(vebus_service, '/Alarms/HighTemperature'),
-			'inverteroverload': self._dbusmonitor.get_value(vebus_service, '/Alarms/Overload')
-		}
-
-		for phase in ['L1', 'L2', 'L3']:
-			# Get the values directly from the inverter, systemcalc doesn't provide raw inverted power
-			loadOnAcOut.append(self._dbusmonitor.get_value(vebus_service, ('/Ac/Out/%s/P' % phase)))
-
-			# Calculate total consumption, '/Ac/Consumption/%s/Power' is deprecated
-			c_i = self._dbusmonitor.get_value(SYSTEM_SERVICE, ('/Ac/ConsumptionOnInput/%s/Power' % phase))
-			c_o = self._dbusmonitor.get_value(SYSTEM_SERVICE, ('/Ac/ConsumptionOnOutput/%s/Power' % phase))
-			totalConsumption.append(sum(filter(None, (c_i, c_o))))
-
-			# Inverter alarms must be fetched directly from the inverter service
-			inverterHighTemp.append(self._dbusmonitor.get_value(vebus_service, ('/Alarms/%s/HighTemperature' % phase)))
-			inverterOverload.append(self._dbusmonitor.get_value(vebus_service, ('/Alarms/%s/Overload' % phase)))
-
-		# Toltal consumption
-		if self._settings['acloadmeasurement'] == 0:
-			values['acload'] = sum(filter(None, totalConsumption))
-
-		# Load on inverter AC out
-		if self._settings['acloadmeasurement'] == 1:
-			values['acload'] = sum(filter(None, loadOnAcOut))
-
-		# Highest phase load
-		if self._settings['acloadmeasurement'] == 2:
-			values['acload'] = safe_max(loadOnAcOut)
-
-		# AC input 1
-		activein = self._dbusmonitor.get_value(vebus_service, '/Ac/ActiveIn/ActiveInput')
-		# Active input is connected
-		connected = self._dbusmonitor.get_value(vebus_service, '/Ac/ActiveIn/Connected')
-		if None not in (activein, connected):
-			values['stoponac1'] = activein == 0 and connected == 1
-		else:
-			values['stoponac1'] = None
-
-		# Invalidate if vebus is not available
-		if loadOnAcOut[0] == None:
-			values['acload'] = None
-
-		if values['batterycurrent']:
-			values['batterycurrent'] *= -1
-
-		# When multi is connected to CAN-bus, alarms are published to
-		# /Alarms/Overload... but when connected to vebus alarms are
-		# splitted in three phases and published to /Alarms/LX/Overload...
-		if values['inverteroverload'] == None:
-			values['inverteroverload'] = safe_max(inverterOverload)
-
-		if values['inverterhightemp'] == None:
-			values['inverterhightemp'] = safe_max(inverterHighTemp)
-
-		return values
+		return Battery(self._dbusmonitor,
+			self._battery_service if self._battery_service else '',
+			self._battery_prefix if self._battery_prefix else '')
 
 	def _determineservices(self):
 		# batterymeasurement is either 'default' or 'com_victronenergy_battery_288/Dc/0'.
