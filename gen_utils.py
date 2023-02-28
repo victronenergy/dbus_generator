@@ -36,14 +36,19 @@ class Errors(object):
 class States(object):
 	STOPPED = 0
 	RUNNING = 1
+	WARMUP = 2
+	COOLDOWN = 3
 	ERROR = 10
 
 	@staticmethod
 	def get_description(value):
 		description = [
-		'Stopped',
-		'Running',
-		'Error']
+			'Stopped',
+			'Running',
+			'Warm-up',
+			'Cool-down'] + \
+		6 * [''] + [
+			'Error']
 		d = ''
 		try:
 			d = description[value]
