@@ -33,7 +33,7 @@ class Generator(object):
 		commondbustree = {
 			'com.victronenergy.settings': {
 				'/Settings/System/TimeZone': dummy,
-				'/Settings/System/AcInput1': dummy,
+				'/Settings/SystemSetup/AcInput1': dummy,
 				'/Settings/Relay/Polarity': dummy
 				},
 			'com.victronenergy.battery': {

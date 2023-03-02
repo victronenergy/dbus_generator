@@ -934,7 +934,7 @@ class StartStop(object):
 		# already running. When differs, the RunningByCondition is updated
 		running = state in (States.WARMUP, States.COOLDOWN, States.RUNNING)
 		if not (running and remote_running): # STOPPED, ERROR
-			if self._settings['warmuptime'] == 0:
+			if not (self._ac1_is_generator and self._settings['warmuptime'] > 0):
 				self._dbusservice['/State'] = States.RUNNING
 			else:
 				self._set_ignore_ac1(True) # Remove load while warming up
@@ -966,7 +966,7 @@ class StartStop(object):
 		running = state in (States.WARMUP, States.COOLDOWN, States.RUNNING)
 
 		if running or remote_running:
-			if self._settings['cooldowntime'] > 0:
+			if self._ac1_is_generator and self._settings['cooldowntime'] > 0:
 				if state == States.RUNNING:
 					self._dbusservice['/State'] = States.COOLDOWN
 					self._stoptime = monotonic_time.monotonic_time().to_seconds_double()
@@ -978,8 +978,8 @@ class StartStop(object):
 						return # Don't stop engine yet
 
 			# When we arrive here, a stop command was given during warmup, the
-			# cooldown timer expired, or no cooldown was configured. Stop
-			# immediately.
+			# cooldown timer expired, no cooldown was configured, or the
+			# generator is not on AC-in-1. Stop immediately.
 			self._dbusservice['/State'] = States.STOPPED
 			self._update_remote_switch()
 			self._set_ignore_ac1(False)
@@ -993,6 +993,13 @@ class StartStop(object):
 			self._dbusservice['/ManualStartTimer'] = 0
 			self._manualstarttimer = 0
 			self._last_runtime_update = 0
+
+	@property
+	def _ac1_is_generator(self):
+		return self._dbusmonitor.get_value('com.victronenergy.settings',
+			'/Settings/SystemSetup/AcInput1') == 2 and \
+			self._dbusmonitor.get_value('com.victronenergy.settings',
+			'/Settings/SystemSetup/AcInput2') != 2
 
 	def _set_ignore_ac1(self, ignore):
 		# This is here so the Multi/Quattro can be told to disconnect AC-in,
