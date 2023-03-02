@@ -61,7 +61,8 @@ class Generator(object):
 				'/Dc/0/Current': dummy,
 				'/Dc/1/Voltage': dummy,
 				'/Dc/1/Current': dummy,
-				'/Soc': dummy
+				'/Soc': dummy,
+				'/Ac/Control/IgnoreAcIn1': dummy
 				},
 			'com.victronenergy.system': {
 				'/Ac/ConsumptionOnInput/L1/Power': dummy,
@@ -144,7 +145,10 @@ class Generator(object):
 			'testrunskipruntime': ['/Settings/{0}/TestRun/SkipRuntime', 0, 0, 100000],
 			'testruntillbatteryfull': ['/Settings/{0}/TestRun/RunTillBatteryFull', 0, 0, 1],
 			# Alarms
-			'nogeneratoratacinalarm': ['/Settings/{0}/Alarms/NoGeneratorAtAcIn', 0, 0, 1]
+			'nogeneratoratacinalarm': ['/Settings/{0}/Alarms/NoGeneratorAtAcIn', 0, 0, 1],
+			# Warm-up and Cool-down
+			'warmuptime': ['/Settings/{0}/WarmUpTime', 0, 0, 600],
+			'cooldowntime': ['/Settings/{0}/CoolDownTime', 0, 0, 600]
 			}
 
 		settings = {}

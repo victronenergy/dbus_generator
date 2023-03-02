@@ -242,6 +242,7 @@ class StartStop(object):
 		self._last_counters_check = 0
 
 		self._starttime = 0
+		self._stoptime = 0 # Used for cooldown
 		self._manualstarttimer = 0
 		self._last_runtime_update = 0
 		self._timer_runnning = 0
@@ -462,7 +463,7 @@ class StartStop(object):
 		# Update current and accumulated runtime.
 		# By performance reasons, accumulated runtime is only updated
 		# once per 60s. When the generator stops is also updated.
-		if self._dbusservice['/State'] == States.RUNNING:
+		if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP, States.COOLDOWN):
 			mtime = monotonic_time.monotonic_time().to_seconds_double()
 			if (mtime - self._starttime) - self._last_runtime_update >= 60:
 				self._dbusservice['/Runtime'] = int(mtime - self._starttime)
@@ -494,7 +495,7 @@ class StartStop(object):
 
 			if self._condition_stack[StopOnAc1Condition.name].reached and startbycondition not in ['manual', 'testrun']:
 				start = False
-				if self._dbusservice['/State'] == States.RUNNING and activecondition not in ['manual', 'testrun']:
+				if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP) and activecondition not in ['manual', 'testrun']:
 					self.log_info('AC input 1 available, stopping')
 
 			# If none condition is reached check if connection is lost and start/keep running the generator
@@ -505,7 +506,7 @@ class StartStop(object):
 					start = True
 					startbycondition = 'lossofcommunication'
 				# Keep running if generator already started
-				if self._dbusservice['/State'] == States.RUNNING and self._settings['onlosscommunication'] == 2:
+				if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP) and self._settings['onlosscommunication'] == 2:
 					start = True
 					startbycondition = 'lossofcommunication'
 
@@ -927,29 +928,61 @@ class StartStop(object):
 
 	def _start_generator(self, condition):
 		state = self._dbusservice['/State']
-		remote_state = self._get_remote_switch_state()
+		remote_running = self._get_remote_switch_state()
 
 		# This function will start the generator in the case generator not
 		# already running. When differs, the RunningByCondition is updated
-		if state == States.STOPPED or remote_state != state:
-			self._dbusservice['/State'] = States.RUNNING
+		running = state in (States.WARMUP, States.COOLDOWN, States.RUNNING)
+		if not (running and remote_running): # STOPPED, ERROR
+			if self._settings['warmuptime'] == 0:
+				self._dbusservice['/State'] = States.RUNNING
+			else:
+				self._set_ignore_ac1(True) # Remove load while warming up
+				self._dbusservice['/State'] = States.WARMUP
 			self._update_remote_switch()
 			self._starttime = monotonic_time.monotonic_time().to_seconds_double()
 			self.log_info('Starting generator by %s condition' % condition)
-		elif self._dbusservice['/RunningByCondition'] != condition:
-			self.log_info('Generator previously running by %s condition is now running by %s condition'
-						% (self._dbusservice['/RunningByCondition'], condition))
+		else: # WARMUP, COOLDOWN, RUNNING
+			if state == States.WARMUP:
+				if monotonic_time.monotonic_time().to_seconds_double() - self._starttime > self._settings['warmuptime']:
+					self._set_ignore_ac1(False) # Release load onto Generator
+					self._dbusservice['/State'] = States.RUNNING
+			elif state == States.COOLDOWN:
+				# Start request during cool-down run, go back to RUNNING
+					self._set_ignore_ac1(False) # Put load back onto Generator
+					self._dbusservice['/State'] = States.RUNNING
+
+			# Update the RunningByCondition
+			if self._dbusservice['/RunningByCondition'] != condition:
+				self.log_info('Generator previously running by %s condition is now running by %s condition'
+							% (self._dbusservice['/RunningByCondition'], condition))
 
 		self._dbusservice['/RunningByCondition'] = condition
 		self._dbusservice['/RunningByConditionCode'] = RunningConditions.lookup(condition)
 
 	def _stop_generator(self):
 		state = self._dbusservice['/State']
-		remote_state = self._get_remote_switch_state()
+		remote_running = self._get_remote_switch_state()
+		running = state in (States.WARMUP, States.COOLDOWN, States.RUNNING)
 
-		if state == 1 or remote_state != state:
+		if running or remote_running:
+			if self._settings['cooldowntime'] > 0:
+				if state == States.RUNNING:
+					self._dbusservice['/State'] = States.COOLDOWN
+					self._stoptime = monotonic_time.monotonic_time().to_seconds_double()
+					self._set_ignore_ac1(True) # Remove load from Generator
+					return
+				elif state == States.COOLDOWN:
+					if monotonic_time.monotonic_time().to_seconds_double() - \
+							self._stoptime <= self._settings['cooldowntime']:
+						return # Don't stop engine yet
+
+			# When we arrive here, a stop command was given during warmup, the
+			# cooldown timer expired, or no cooldown was configured. Stop
+			# immediately.
 			self._dbusservice['/State'] = States.STOPPED
 			self._update_remote_switch()
+			self._set_ignore_ac1(False)
 			self.log_info('Stopping generator that was running by %s condition' %
 						str(self._dbusservice['/RunningByCondition']))
 			self._dbusservice['/RunningByCondition'] = ''
@@ -961,8 +994,18 @@ class StartStop(object):
 			self._manualstarttimer = 0
 			self._last_runtime_update = 0
 
+	def _set_ignore_ac1(self, ignore):
+		# This is here so the Multi/Quattro can be told to disconnect AC-in,
+		# so that we can do warm-up and cool-down.  We will gleefully ignore
+		# the lack of a Multi or support for this, because if support isn't
+		# there, then nothing bad happens.
+		if self._vebusservice is not None:
+			self._dbusmonitor.set_value_async(self._vebusservice, '/Ac/Control/IgnoreAcIn1', dbus.Int32(ignore, variant_level=1))
+
 	def _update_remote_switch(self):
-		self._set_remote_switch_state(dbus.Int32(self._dbusservice['/State'], variant_level=1))
+		# Engine should be started in these states
+		v = self._dbusservice['/State'] in (States.RUNNING, States.WARMUP, States.COOLDOWN)
+		self._set_remote_switch_state(dbus.Int32(v, variant_level=1))
 
 	def _get_remote_switch_state(self):
 		raise Exception('This function should be overridden')
