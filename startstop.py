@@ -194,16 +194,21 @@ class StopOnAc1Condition(Condition):
 
 	def get_value(self):
 		# AC input 1
-		activein = self.monitor.get_value(self.vebus_service,
-			'/Ac/ActiveIn/ActiveInput')
+		available = self.monitor.get_value(self.vebus_service,
+			'/Ac/State/AcIn1Available')
+		if available is None:
+			# Not supported in firmware, fall back to old behaviour
+			activein = self.monitor.get_value(self.vebus_service,
+				'/Ac/ActiveIn/ActiveInput')
 
-		# Active input is connected
-		connected = self.monitor.get_value(self.vebus_service,
-			'/Ac/ActiveIn/Connected')
-		if None not in (activein, connected):
-			return activein == 0 and connected == 1
+			# Active input is connected
+			connected = self.monitor.get_value(self.vebus_service,
+				'/Ac/ActiveIn/Connected')
+			if None not in (activein, connected):
+				return activein == 0 and connected == 1
+			return None
 
-		return None
+		return bool(available)
 
 class Battery(object):
 	def __init__(self, monitor, service, prefix):

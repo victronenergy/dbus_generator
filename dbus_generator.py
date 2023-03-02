@@ -62,6 +62,7 @@ class Generator(object):
 				'/Dc/1/Voltage': dummy,
 				'/Dc/1/Current': dummy,
 				'/Soc': dummy,
+				'/Ac/State/AcIn1Available': dummy,
 				'/Ac/Control/IgnoreAcIn1': dummy
 				},
 			'com.victronenergy.system': {
