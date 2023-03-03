@@ -210,6 +210,19 @@ class StopOnAc1Condition(Condition):
 
 		return bool(available)
 
+class StopOnAc2Condition(Condition):
+	name = 'stoponac2'
+	monitoring = 'vebus'
+	boolean = True
+	timed = False
+
+	def get_value(self):
+		# AC input 2 available (used when grid is on AC-in-2)
+		available = self.monitor.get_value(self.vebus_service,
+			'/Ac/State/AcIn2Available')
+
+		return None if available is None else bool(available)
+
 class Battery(object):
 	def __init__(self, monitor, service, prefix):
 		self.monitor = monitor
@@ -273,7 +286,8 @@ class StartStop(object):
 			BatteryVoltageCondition.name:   BatteryVoltageCondition(self),
 			InverterTempCondition.name:     InverterTempCondition(self),
 			InverterOverloadCondition.name: InverterOverloadCondition(self),
-			StopOnAc1Condition.name:        StopOnAc1Condition(self)
+			StopOnAc1Condition.name:        StopOnAc1Condition(self),
+			StopOnAc2Condition.name:        StopOnAc2Condition(self)
 		})
 
 	def set_sources(self, dbusmonitor, settings, name, remoteservice):
@@ -498,10 +512,12 @@ class StartStop(object):
 				if data.enabled:
 					connection_lost = data.retries >= self.RETRIES_ON_ERROR
 
-			if self._condition_stack[StopOnAc1Condition.name].reached and startbycondition not in ['manual', 'testrun']:
-				start = False
-				if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP) and activecondition not in ['manual', 'testrun']:
-					self.log_info('AC input 1 available, stopping')
+			if startbycondition not in ['manual', 'testrun']:
+				if self._condition_stack[StopOnAc1Condition.name].reached or \
+						self._condition_stack[StopOnAc2Condition.name].reached:
+					start = False
+					if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP) and activecondition not in ['manual', 'testrun']:
+						self.log_info('AC input available, stopping')
 
 			# If none condition is reached check if connection is lost and start/keep running the generator
 			# depending on '/OnLossCommunication' setting
