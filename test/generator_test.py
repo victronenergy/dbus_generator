@@ -132,6 +132,7 @@ class TestGenerator(TestGeneratorBase):
 			values={
 				'/Settings/Relay/Function': 1,
 				'/Settings/System/TimeZone': 'Europe/Berlin',
+				'/Settings/SystemSetup/AcInput1': 2,
 			})
 
 		self._add_device('com.victronenergy.genset.socketcan_can1_di0_uc0',
@@ -162,6 +163,8 @@ class TestGenerator(TestGeneratorBase):
 				'/Ac/Out/L3/P': 500,
 				'/Ac/ActiveIn/ActiveInput': 1,
 				'/Ac/ActiveIn/Connected': 0,
+				'/Ac/State/AcIn1Available': None, # not supported in older firmware
+				'/Ac/State/AcIn2Available': None,
 				'/Soc': 87
 				})
 
@@ -230,6 +233,73 @@ class TestGenerator(TestGeneratorBase):
 			'/State': States.RUNNING
 		})
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/Connected', 1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+
+	def test_ac1_available(self):
+		# Similar to above, but tests with readout support on the Quattro
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/Connected', 1)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/ActiveInput', 1)
+		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 1650)
+		self._set_setting('/Settings/Generator0/AcLoad/StopValue', 800)
+		self._set_setting('/Settings/Generator0/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/Generator0/AcLoad/StopTimer', 0)
+		self._set_setting('/Settings/Generator0/StopWhenAc1Available', 1)
+
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING
+		})
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/State/AcIn1Available', 0)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/ActiveInput', 240)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/Connected', 0)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING
+		})
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/State/AcIn1Available', 1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+
+	def test_ac2_available(self):
+		# Test for stopping generator where firmware supports it.
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/Connected', 1)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/ActiveInput', 0)
+		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 1650)
+		self._set_setting('/Settings/Generator0/AcLoad/StopValue', 800)
+		self._set_setting('/Settings/Generator0/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/Generator0/AcLoad/StopTimer', 0)
+		self._set_setting('/Settings/Generator0/StopWhenAc1Available', 0)
+		self._set_setting('/Settings/Generator0/StopWhenAc2Available', 1)
+
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING
+		})
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/State/AcIn2Available', 0)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/ActiveInput', 240)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/Connected', 0)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING
+		})
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/State/AcIn2Available', 1)
 		self._update_values()
 		self._check_values(0, {
 			'/State': States.STOPPED
@@ -1074,6 +1144,32 @@ class TestGenerator(TestGeneratorBase):
 		})
 
 		self._monitor.set_value('com.victronenergy.battery.ttyO5', '/Dc/0/Voltage', 15)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+
+	def test_warmup_and_cooldown(self):
+		self._set_setting('/Settings/Generator0/WarmUpTime', 1)
+		self._set_setting('/Settings/Generator0/CoolDownTime', 1)
+		self._services[0]['/ManualStart'] = 1
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.WARMUP
+		})
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING
+		})
+
+		self._services[0]['/ManualStart'] = 0
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.COOLDOWN
+		})
+
+		sleep(1)
 		self._update_values()
 		self._check_values(0, {
 			'/State': States.STOPPED
