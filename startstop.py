@@ -368,6 +368,12 @@ class StartStop(object):
 		self._create_service()
 		self._determineservices()
 		self._update_remote_switch()
+		# If cooldown or warmup is enabled, the Quattro may be left in a bad
+		# state if there is an unfortunate crash or a reboot. Set the ignore_ac
+		# flag to a sane value on startup.
+		if self._settings['cooldowntime'] > 0 or \
+				self._settings['warmuptime'] > 0:
+			self._set_ignore_ac1(False)
 		self._enabled = True
 
 	def disable(self):
