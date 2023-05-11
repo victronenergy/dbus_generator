@@ -34,6 +34,7 @@ class Generator(object):
 			'com.victronenergy.settings': {
 				'/Settings/System/TimeZone': dummy,
 				'/Settings/SystemSetup/AcInput1': dummy,
+				'/Settings/SystemSetup/AcInput2': dummy,
 				'/Settings/Relay/Polarity': dummy
 				},
 			'com.victronenergy.battery': {
@@ -64,7 +65,8 @@ class Generator(object):
 				'/Soc': dummy,
 				'/Ac/State/AcIn1Available': dummy,
 				'/Ac/State/AcIn2Available': dummy,
-				'/Ac/Control/IgnoreAcIn1': dummy
+				'/Ac/Control/IgnoreAcIn1': dummy,
+				'/Ac/Control/IgnoreAcIn2': dummy
 				},
 			'com.victronenergy.system': {
 				'/Ac/ConsumptionOnInput/L1/Power': dummy,

@@ -133,6 +133,7 @@ class TestGenerator(TestGeneratorBase):
 				'/Settings/Relay/Function': 1,
 				'/Settings/System/TimeZone': 'Europe/Berlin',
 				'/Settings/SystemSetup/AcInput1': 2,
+				'/Settings/SystemSetup/AcInput2': 1,
 			})
 
 		self._add_device('com.victronenergy.genset.socketcan_can1_di0_uc0',
@@ -165,6 +166,8 @@ class TestGenerator(TestGeneratorBase):
 				'/Ac/ActiveIn/Connected': 0,
 				'/Ac/State/AcIn1Available': None, # not supported in older firmware
 				'/Ac/State/AcIn2Available': None,
+				'/Ac/Control/IgnoreAcIn1': 0,
+				'/Ac/Control/IgnoreAcIn2': 0,
 				'/Soc': 87
 				})
 
@@ -1157,6 +1160,13 @@ class TestGenerator(TestGeneratorBase):
 		self._check_values(0, {
 			'/State': States.WARMUP
 		})
+
+		# Test that generator input is ignored during warmup
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn1'), 1)
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn2'), 0)
+
 		sleep(1)
 		self._update_values()
 		self._check_values(0, {
@@ -1168,6 +1178,56 @@ class TestGenerator(TestGeneratorBase):
 		self._check_values(0, {
 			'/State': States.COOLDOWN
 		})
+
+		# Test that generator input is ignored during cooldown
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn1'), 1)
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn2'), 0)
+
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+
+	def test_warmup_and_cooldown_ac2(self):
+		self._set_setting('/Settings/Generator0/WarmUpTime', 1)
+		self._set_setting('/Settings/Generator0/CoolDownTime', 1)
+
+		# Genset is on AC2
+		self._monitor.set_value('com.victronenergy.settings', '/Settings/SystemSetup/AcInput1', 1)
+		self._monitor.set_value('com.victronenergy.settings', '/Settings/SystemSetup/AcInput2', 2)
+
+		self._services[0]['/ManualStart'] = 1
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.WARMUP
+		})
+
+		# Test that generator input is ignored during warmup
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn1'), 0)
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn2'), 1)
+
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING
+		})
+
+		self._services[0]['/ManualStart'] = 0
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.COOLDOWN
+		})
+
+		# Test that generator input is ignored during cooldown
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn1'), 0)
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn2'), 1)
 
 		sleep(1)
 		self._update_values()

@@ -374,6 +374,7 @@ class StartStop(object):
 		if self._settings['cooldowntime'] > 0 or \
 				self._settings['warmuptime'] > 0:
 			self._set_ignore_ac1(False)
+			self._set_ignore_ac2(False)
 		self._enabled = True
 
 	def disable(self):
@@ -961,11 +962,16 @@ class StartStop(object):
 		# already running. When differs, the RunningByCondition is updated
 		running = state in (States.WARMUP, States.COOLDOWN, States.RUNNING)
 		if not (running and remote_running): # STOPPED, ERROR
-			if not (self._ac1_is_generator and self._settings['warmuptime'] > 0):
-				self._dbusservice['/State'] = States.RUNNING
-			else:
-				self._set_ignore_ac1(True) # Remove load while warming up
+			if self._settings['warmuptime'] > 0:
+				# Remove load while warming up
+				if self._ac1_is_generator:
+					self._set_ignore_ac1(True)
+				if self._ac2_is_generator:
+					self._set_ignore_ac2(True)
 				self._dbusservice['/State'] = States.WARMUP
+			else:
+				self._dbusservice['/State'] = States.RUNNING
+
 			self._update_remote_switch()
 			self._starttime = monotonic_time.monotonic_time().to_seconds_double()
 			self.log_info('Starting generator by %s condition' % condition)
@@ -973,10 +979,12 @@ class StartStop(object):
 			if state == States.WARMUP:
 				if monotonic_time.monotonic_time().to_seconds_double() - self._starttime > self._settings['warmuptime']:
 					self._set_ignore_ac1(False) # Release load onto Generator
+					self._set_ignore_ac2(False)
 					self._dbusservice['/State'] = States.RUNNING
 			elif state == States.COOLDOWN:
 				# Start request during cool-down run, go back to RUNNING
 					self._set_ignore_ac1(False) # Put load back onto Generator
+					self._set_ignore_ac2(False)
 					self._dbusservice['/State'] = States.RUNNING
 
 			# Update the RunningByCondition
@@ -993,11 +1001,17 @@ class StartStop(object):
 		running = state in (States.WARMUP, States.COOLDOWN, States.RUNNING)
 
 		if running or remote_running:
-			if self._ac1_is_generator and self._settings['cooldowntime'] > 0:
+			if self._settings['cooldowntime'] > 0:
 				if state == States.RUNNING:
 					self._dbusservice['/State'] = States.COOLDOWN
 					self._stoptime = monotonic_time.monotonic_time().to_seconds_double()
-					self._set_ignore_ac1(True) # Remove load from Generator
+
+					# Remove load from Generator
+					if self._ac1_is_generator:
+						self._set_ignore_ac1(True)
+					if self._ac2_is_generator:
+						self._set_ignore_ac2(True)
+
 					return
 				elif state == States.COOLDOWN:
 					if monotonic_time.monotonic_time().to_seconds_double() - \
@@ -1005,11 +1019,12 @@ class StartStop(object):
 						return # Don't stop engine yet
 
 			# When we arrive here, a stop command was given during warmup, the
-			# cooldown timer expired, no cooldown was configured, or the
-			# generator is not on AC-in-1. Stop immediately.
+			# cooldown timer expired, no cooldown was configured. Stop
+			# immediately.
 			self._dbusservice['/State'] = States.STOPPED
 			self._update_remote_switch()
 			self._set_ignore_ac1(False)
+			self._set_ignore_ac2(False)
 			self.log_info('Stopping generator that was running by %s condition' %
 						str(self._dbusservice['/RunningByCondition']))
 			self._dbusservice['/RunningByCondition'] = ''
@@ -1024,17 +1039,22 @@ class StartStop(object):
 	@property
 	def _ac1_is_generator(self):
 		return self._dbusmonitor.get_value('com.victronenergy.settings',
-			'/Settings/SystemSetup/AcInput1') == 2 and \
-			self._dbusmonitor.get_value('com.victronenergy.settings',
-			'/Settings/SystemSetup/AcInput2') != 2
+			'/Settings/SystemSetup/AcInput1') == 2
+
+	@property
+	def _ac2_is_generator(self):
+		return self._dbusmonitor.get_value('com.victronenergy.settings',
+			'/Settings/SystemSetup/AcInput2') == 2
 
 	def _set_ignore_ac1(self, ignore):
 		# This is here so the Multi/Quattro can be told to disconnect AC-in,
-		# so that we can do warm-up and cool-down.  We will gleefully ignore
-		# the lack of a Multi or support for this, because if support isn't
-		# there, then nothing bad happens.
+		# so that we can do warm-up and cool-down.
 		if self._vebusservice is not None:
 			self._dbusmonitor.set_value_async(self._vebusservice, '/Ac/Control/IgnoreAcIn1', dbus.Int32(ignore, variant_level=1))
+
+	def _set_ignore_ac2(self, ignore):
+		if self._vebusservice is not None:
+			self._dbusmonitor.set_value_async(self._vebusservice, '/Ac/Control/IgnoreAcIn2', dbus.Int32(ignore, variant_level=1))
 
 	def _update_remote_switch(self):
 		# Engine should be started in these states
