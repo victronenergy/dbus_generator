@@ -1235,6 +1235,10 @@ class TestGenerator(TestGeneratorBase):
 			'/State': States.STOPPED
 		})
 
+	def test_capabilities_no_warmupcooldown(self):
+		self._check_values(0, {'/Capabilities': 0})
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/State/AcIn1Available', 1)
+		self._check_values(0, {'/Capabilities': 1}) # Startup and Cooldown is supported
 
 if __name__ == '__main__':
 	# patch dbus_generator with mock glib

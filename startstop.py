@@ -39,6 +39,10 @@ RunningConditions = enum(
 		InverterOverload = 9,
 		StopOnAc1 = 10)
 
+Capabilities = enum(
+	WarmupCooldown = 1
+)
+
 SYSTEM_SERVICE = 'com.victronenergy.system'
 BATTERY_PREFIX = '/Dc/Battery'
 HISTORY_DAYS = 30
@@ -335,6 +339,8 @@ class StartStop(object):
 		self._dbusservice.add_path('/AutoStartEnabled', value=None, writeable=True, onchangecallback=self._set_autostart)
 		# Accumulated runtime
 		self._dbusservice.add_path('/AccumulatedRuntime', value=None)
+		# Capabilities, where we can add bits
+		self._dbusservice.add_path('/Capabilities', value=0)
 
 		# We need to set the values after creating the paths to trigger the 'onValueChanged' event for the gui
 		# otherwise the gui will report the paths as invalid if we remove and recreate the paths without
@@ -354,6 +360,10 @@ class StartStop(object):
 		self._dbusservice['/Alarms/NoGeneratorAtAcIn'] = 0
 		self._dbusservice['/AutoStartEnabled'] = self._settings['autostart']
 		self._dbusservice['/AccumulatedRuntime'] = int(self._settings['accumulatedtotal'])
+
+	@property
+	def capabilities(self):
+		return self._dbusservice['/Capabilities']
 
 	def _set_autostart(self, path, value):
 		if 0 <= value <= 1:
@@ -410,6 +420,14 @@ class StartStop(object):
 	def dbus_value_changed(self, dbusServiceName, dbusPath, options, changes, deviceInstance):
 		if self._dbusservice is None:
 			return
+
+		# AcIn1Available is needed to determine capabilities, but may
+		# only show up later. So we have to wait for it here.
+		if self._vebusservice is not None and \
+				dbusServiceName == self._vebusservice and \
+				dbusPath == '/Ac/State/AcIn1Available':
+			self._set_capabilities()
+
 		if dbusServiceName != 'com.victronenergy.system':
 			return
 		if dbusPath == '/AutoSelectedBatteryMeasurement' and self._settings['batterymeasurement'] == 'default':
@@ -867,6 +885,15 @@ class StartStop(object):
 			self._battery_service if self._battery_service else '',
 			self._battery_prefix if self._battery_prefix else '')
 
+	def _set_capabilities(self):
+		# Update capabilities
+		# The ability to ignore AC1/AC2 came in at the same time as
+		# AC availability and is used to detect it here.
+		readout_supported = self._dbusmonitor.get_value(self._vebusservice,
+			'/Ac/State/AcIn1Available') is not None
+		self._dbusservice['/Capabilities'] |= (
+			Capabilities.WarmupCooldown if readout_supported else 0)
+
 	def _determineservices(self):
 		# batterymeasurement is either 'default' or 'com_victronenergy_battery_288/Dc/0'.
 		# In case it is set to default, we use the AutoSelected battery
@@ -929,6 +956,7 @@ class StartStop(object):
 		if vebusservice:
 			if self._vebusservice != vebusservice:
 				self._vebusservice = vebusservice
+				self._set_capabilities()
 				self.log_info('Vebus service (%s) found! Using it for generator start/stop' % vebusservice)
 		else:
 			if self._vebusservice is not None:
