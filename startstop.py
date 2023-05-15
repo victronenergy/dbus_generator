@@ -335,12 +335,16 @@ class StartStop(object):
 		self._dbusservice.add_path('/QuietHours', value=None)
 		# Alarms
 		self._dbusservice.add_path('/Alarms/NoGeneratorAtAcIn', value=None)
+		self._dbusservice.add_path('/Alarms/ServiceIntervalExceeded', value=None)
 		# Autostart
 		self._dbusservice.add_path('/AutoStartEnabled', value=None, writeable=True, onchangecallback=self._set_autostart)
 		# Accumulated runtime
 		self._dbusservice.add_path('/AccumulatedRuntime', value=None)
 		# Capabilities, where we can add bits
 		self._dbusservice.add_path('/Capabilities', value=0)
+		# Service countdown, calculated by running time and service interval
+		self._dbusservice.add_path('/ServiceCounter', value=None)
+		self._dbusservice.add_path('/ServiceCounterReset', value=None, writeable=True, onchangecallback=self._reset_service_counter)
 
 		# We need to set the values after creating the paths to trigger the 'onValueChanged' event for the gui
 		# otherwise the gui will report the paths as invalid if we remove and recreate the paths without
@@ -358,8 +362,11 @@ class StartStop(object):
 		self._dbusservice['/ManualStartTimer'] = 0
 		self._dbusservice['/QuietHours'] = 0
 		self._dbusservice['/Alarms/NoGeneratorAtAcIn'] = 0
+		self._dbusservice['/Alarms/ServiceIntervalExceeded'] = 0
 		self._dbusservice['/AutoStartEnabled'] = self._settings['autostart']
 		self._dbusservice['/AccumulatedRuntime'] = int(self._settings['accumulatedtotal'])
+		self._dbusservice['/ServiceCounter'] = None
+		self._dbusservice['/ServiceCounterReset'] = 0
 
 	@property
 	def capabilities(self):
@@ -461,6 +468,22 @@ class StartStop(object):
 			self._dbusservice['/TestRunIntervalRuntime'] = self._interval_runtime(
 															self._settings['testruninterval'])
 
+		if s == 'serviceinterval':
+			if newvalue == 0:
+				self._dbusservice['/ServiceCounter'] = None
+			else:
+				self._update_accumulated_time()
+		if s == 'lastservicereset':
+				self._update_accumulated_time()
+
+	def _reset_service_counter(self, path, value):
+		if (path == '/ServiceCounterReset' and value == int(1) and self._dbusservice['/AccumulatedRuntime']):
+			self._settings['lastservicereset'] = self._dbusservice['/AccumulatedRuntime']
+			self._update_accumulated_time()
+			self.log_info('Service counter reset triggered.')
+
+		return True
+
 	def _seconds_to_text(self, path, value):
 			m, s = divmod(value, 60)
 			h, m = divmod(m, 60)
@@ -475,6 +498,8 @@ class StartStop(object):
 		self._check_remote_status()
 		self._evaluate_startstop_conditions()
 		self._detect_generator_at_acinput()
+		if self._dbusservice['/ServiceCounterReset'] == 1:
+			self._dbusservice['/ServiceCounterReset'] = 0
 
 	def _evaluate_startstop_conditions(self):
 		if self.get_error() != Errors.NONE:
@@ -862,6 +887,19 @@ class StartStop(object):
 		self._dbusservice['/TodayRuntime'] = self._interval_runtime(0)
 		self._dbusservice['/TestRunIntervalRuntime'] = self._interval_runtime(self._settings['testruninterval'])
 		self._dbusservice['/AccumulatedRuntime'] = accumulatedtotal
+
+		# Service counter
+		serviceinterval = self._settings['serviceinterval']
+		lastservicereset = self._settings['lastservicereset']
+		if serviceinterval > 0:
+			servicecountdown = (lastservicereset + serviceinterval) - accumulatedtotal
+			self._dbusservice['/ServiceCounter'] = servicecountdown
+			if servicecountdown <= 0:
+				self._dbusservice['/Alarms/ServiceIntervalExceeded'] = 1
+			elif self._dbusservice['/Alarms/ServiceIntervalExceeded'] != 0:
+				self._dbusservice['/Alarms/ServiceIntervalExceeded'] = 0
+
+
 
 	def _interval_runtime(self, days):
 		summ = 0

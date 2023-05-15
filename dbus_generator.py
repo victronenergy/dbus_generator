@@ -88,9 +88,11 @@ class Generator(object):
 		# Settings base
 		settingsbase = {
 			'autostart': ['/Settings/{0}/AutoStartEnabled', 0, 0, 1],
-			'batterymeasurement': ['/Settings/{0}/Service', '', 0, 0],
+			'serviceinterval': ['/Settings/{0}/ServiceInterval', 0, 0, 0],
+			'lastservicereset': ['/Settings/{0}/LastServiceReset', 0, 0, 0],
 			'accumulateddaily': ['/Settings/{0}/AccumulatedDaily', '', 0, 0, True],
-			'accumulatedtotal': ['/Settings/{0}/AccumulatedTotal', 0, 0, 0, True],
+			'accumulatedtotal': ['/Settings/{0}/AccumulatedTotal', 0, 0, 0, True], # Internal, can't be reset by the user
+			'accumulatedtotalOffset': ['/Settings/{0}/AccumulatedTotalOffset', 0, 0, 0], # For calculating user runtime
 			'batterymeasurement': ['/Settings/{0}/BatteryService', 'default', 0, 0],
 			'minimumruntime': ['/Settings/{0}/MinimumRuntime', 0, 0, 86400],  # minutes
 			'stoponac1enabled': ['/Settings/{0}/StopWhenAc1Available', 0, 0, 1],
