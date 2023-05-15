@@ -358,6 +358,7 @@ class StartStop(object):
 		self._dbusservice['/TestRunIntervalRuntime'] = self._interval_runtime(self._settings['testruninterval'])
 		self._dbusservice['/NextTestRun'] = None
 		self._dbusservice['/SkipTestRun'] = None
+		self._dbusservice['/ProductName'] = "Generator start/stop"
 		self._dbusservice['/ManualStart'] = 0
 		self._dbusservice['/ManualStartTimer'] = 0
 		self._dbusservice['/QuietHours'] = 0
