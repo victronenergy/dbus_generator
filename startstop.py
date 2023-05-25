@@ -37,7 +37,8 @@ RunningConditions = enum(
 		BatteryVoltage = 7,
 		InverterHighTemp = 8,
 		InverterOverload = 9,
-		StopOnAc1 = 10)
+		StopOnAc1 = 10,
+		StopOnAc2 = 11)
 
 Capabilities = enum(
 	WarmupCooldown = 1
