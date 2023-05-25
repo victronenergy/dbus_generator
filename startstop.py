@@ -522,6 +522,7 @@ class StartStop(object):
 		today = calendar.timegm(datetime.date.today().timetuple())
 		self._timer_runnning = False
 		connection_lost = False
+		running = self._dbusservice['/State'] in (States.RUNNING, States.WARMUP)
 
 		self._check_quiet_hours()
 
@@ -553,8 +554,28 @@ class StartStop(object):
 				startbycondition = 'testrun'
 				start = True
 
+			# Evaluate stop on AC IN conditions first, when this conditions are enabled and reached the generator
+			# will stop as soon as AC IN in active. Manual and testrun conditions will make the generator start
+			# or keep it running.
+			stop_on_ac_reached = (self._evaluate_condition(self._condition_stack[StopOnAc1Condition.name]) or
+						       self._evaluate_condition(self._condition_stack[StopOnAc2Condition.name]))
+			stop_by_ac1_ac2 = startbycondition not in ['manual', 'testrun'] and stop_on_ac_reached
+
+			if stop_by_ac1_ac2 and running and activecondition not in ['manual', 'testrun']:
+				self.log_info('AC input available, stopping')
+
 			# Evaluate value conditions
 			for condition, data in self._condition_stack.items():
+				# Do not evaluate rest of conditions if generator is configured to stop
+				# when AC IN is available
+				if stop_by_ac1_ac2:
+					start = False
+					if running:
+						self._reset_condition(data)
+						continue
+					else:
+						break
+
 				# Don't short-circuit this, _evaluate_condition sets .reached
 				start = self._evaluate_condition(data) or start
 				startbycondition = condition if start and startbycondition is None else startbycondition
@@ -562,13 +583,6 @@ class StartStop(object):
 				# >= RETRIES_ON_ERROR
 				if data.enabled:
 					connection_lost = data.retries >= self.RETRIES_ON_ERROR
-
-			if startbycondition not in ['manual', 'testrun']:
-				if self._condition_stack[StopOnAc1Condition.name].reached or \
-						self._condition_stack[StopOnAc2Condition.name].reached:
-					start = False
-					if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP) and activecondition not in ['manual', 'testrun']:
-						self.log_info('AC input available, stopping')
 
 			# If none condition is reached check if connection is lost and start/keep running the generator
 			# depending on '/OnLossCommunication' setting
@@ -578,7 +592,7 @@ class StartStop(object):
 					start = True
 					startbycondition = 'lossofcommunication'
 				# Keep running if generator already started
-				if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP) and self._settings['onlosscommunication'] == 2:
+				if running and self._settings['onlosscommunication'] == 2:
 					start = True
 					startbycondition = 'lossofcommunication'
 
