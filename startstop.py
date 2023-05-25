@@ -269,6 +269,11 @@ class StartStop(object):
 		self._last_runtime_update = 0
 		self._timer_runnning = 0
 
+		# The installer left autostart disabled
+		self.AUTOSTART_DISABLED_ALARM_TIME = 600
+		self._autostart_last_time = self._get_monotonic_seconds()
+
+
 		# Manual battery service selection is deprecated in favour
 		# of getting the values directly from systemcalc, we keep
 		# manual selected services handling for compatibility reasons.
@@ -336,6 +341,7 @@ class StartStop(object):
 		# Alarms
 		self._dbusservice.add_path('/Alarms/NoGeneratorAtAcIn', value=None)
 		self._dbusservice.add_path('/Alarms/ServiceIntervalExceeded', value=None)
+		self._dbusservice.add_path('/Alarms/AutoStartDisabled', value=None)
 		# Autostart
 		self._dbusservice.add_path('/AutoStartEnabled', value=None, writeable=True, onchangecallback=self._set_autostart)
 		# Accumulated runtime
@@ -364,6 +370,7 @@ class StartStop(object):
 		self._dbusservice['/QuietHours'] = 0
 		self._dbusservice['/Alarms/NoGeneratorAtAcIn'] = 0
 		self._dbusservice['/Alarms/ServiceIntervalExceeded'] = 0
+		self._dbusservice['/Alarms/AutoStartDisabled'] = 0
 		self._dbusservice['/AutoStartEnabled'] = self._settings['autostart']
 		self._dbusservice['/AccumulatedRuntime'] = int(self._settings['accumulatedtotal'])
 		self._dbusservice['/ServiceCounter'] = None
@@ -498,6 +505,7 @@ class StartStop(object):
 			return
 		self._check_remote_status()
 		self._evaluate_startstop_conditions()
+		self._evaluate_autostart_disabled_alarm()
 		self._detect_generator_at_acinput()
 		if self._dbusservice['/ServiceCounterReset'] == 1:
 			self._dbusservice['/ServiceCounterReset'] = 0
@@ -607,6 +615,20 @@ class StartStop(object):
 		elif (self._dbusservice['/Runtime'] >= self._settings['minimumruntime'] * 60
 			  or activecondition == 'manual'):
 			self._stop_generator()
+
+	def _evaluate_autostart_disabled_alarm(self):
+
+		if self._settings['autostart'] == 1 or self._settings['autostartdisabledalarm'] == 0:
+			self._autostart_last_time = self._get_monotonic_seconds()
+			if self._dbusservice['/Alarms/AutoStartDisabled'] != 0:
+				self._dbusservice['/Alarms/AutoStartDisabled'] = 0
+			return
+
+		timedisabled = self._get_monotonic_seconds() - self._autostart_last_time
+		if timedisabled > self.AUTOSTART_DISABLED_ALARM_TIME and self._dbusservice['/Alarms/AutoStartDisabled'] != 2:
+			self.log_info("Autostart was left for more than %i seconds, triggering alarm." % int(timedisabled))
+			self._dbusservice['/Alarms/AutoStartDisabled'] = 2
+
 
 	def _detect_generator_at_acinput(self):
 		state = self._dbusservice['/State']

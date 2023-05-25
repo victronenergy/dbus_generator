@@ -153,6 +153,7 @@ class Generator(object):
 			'testruntillbatteryfull': ['/Settings/{0}/TestRun/RunTillBatteryFull', 0, 0, 1],
 			# Alarms
 			'nogeneratoratacinalarm': ['/Settings/{0}/Alarms/NoGeneratorAtAcIn', 0, 0, 1],
+			'autostartdisabledalarm': ['/Settings/{0}/Alarms/AutoStartDisabled', 0, 0, 1],
 			# Warm-up and Cool-down
 			'warmuptime': ['/Settings/{0}/WarmUpTime', 0, 0, 600],
 			'cooldowntime': ['/Settings/{0}/CoolDownTime', 0, 0, 600]
