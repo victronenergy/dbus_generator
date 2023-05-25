@@ -263,6 +263,9 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/Connected', 1)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/ActiveInput', 1)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Voltage', 11.5)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', -60)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', 80)
 		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 1)
@@ -271,6 +274,9 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/AcLoad/StartTimer', 0)
 		self._set_setting('/Settings/Generator0/AcLoad/StopTimer', 0)
 		self._set_setting('/Settings/Generator0/StopWhenAc1Available', 1)
+		self._set_setting('/Settings/Generator0/Soc/Enabled', 1)
+		self._set_setting('/Settings/Generator0/Soc/StartValue', 30)
+		self._set_setting('/Settings/Generator0/Soc/StopValue', 70)
 
 		self._update_values()
 		self._check_values(0, {
@@ -289,6 +295,36 @@ class TestGenerator(TestGeneratorBase):
 			'/State': States.STOPPED
 		})
 
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 100)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 100)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 100)
+
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/State/AcIn1Available', 0)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', 20)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING
+		})
+
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/State/AcIn1Available', 1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+
+		# Check that conditions are reset after AC becomes unavailable again
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', 40)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/State/AcIn1Available', 0)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+
 	def test_ac2_available(self):
 		# Test for stopping generator where firmware supports it.
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
@@ -296,6 +332,9 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/Connected', 1)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/ActiveInput', 0)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Voltage', 11.5)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', -60)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', 80)
 		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 1)
@@ -305,6 +344,9 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/AcLoad/StopTimer', 0)
 		self._set_setting('/Settings/Generator0/StopWhenAc1Available', 0)
 		self._set_setting('/Settings/Generator0/StopWhenAc2Available', 1)
+		self._set_setting('/Settings/Generator0/Soc/Enabled', 1)
+		self._set_setting('/Settings/Generator0/Soc/StartValue', 30)
+		self._set_setting('/Settings/Generator0/Soc/StopValue', 70)
 
 		self._update_values()
 		self._check_values(0, {
@@ -318,6 +360,36 @@ class TestGenerator(TestGeneratorBase):
 			'/State': States.RUNNING
 		})
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/State/AcIn2Available', 1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 100)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 100)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 100)
+
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/State/AcIn2Available', 0)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', 20)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING
+		})
+
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/State/AcIn2Available', 1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+
+		# Check that conditions are reset after AC becomes unavailable again
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', 40)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/State/AcIn2Available', 0)
 		self._update_values()
 		self._check_values(0, {
 			'/State': States.STOPPED
@@ -936,7 +1008,7 @@ class TestGenerator(TestGeneratorBase):
 		self._check_values(0, {
 			'/State': States.RUNNING
 		})
-		
+
 		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Current', 0)
 		self._update_values()
 		self._check_values(0, {
