@@ -22,7 +22,22 @@ from gen_utils import Errors, States
 import startstop
 
 # Monkey-patch dbus connection
-startstop.StartStop._create_dbus_service = lambda s: MockDbusService('com.victronenergy.generator.startstop{}'.format(s._instance))
+startstop.StartStop._create_dbus_service = lambda s: create_service(s)
+
+def create_service(s):
+	serv = MockDbusService('com.victronenergy.generator.startstop{}'.format(s._instance))
+	# Mandatory paths are needed
+	serv.add_mandatory_paths(
+            processname="mock_dbus",
+            processversion=1.0,
+            connection='',
+            deviceinstance=1,
+            productid=None,
+            productname=None,
+            firmwareversion=None,
+            hardwareversion=None,
+            connected=1)
+	return serv
 
 class MockGenerator(dbus_generator.Generator):
 
