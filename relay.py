@@ -27,8 +27,8 @@ def check_device(dbusmonitor, service):
 	# return false.
 	return False
 
-def create(dbusmonitor, remoteservice, settings, instance):
-	i = RelayGenerator(instance)
+def create(dbusmonitor, remoteservice, settings):
+	i = RelayGenerator(device_instance)
 	i.set_sources(dbusmonitor, settings, name, remoteservice)
 	return i
 

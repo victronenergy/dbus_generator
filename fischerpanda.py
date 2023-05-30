@@ -31,8 +31,8 @@ def check_device(dbusmonitor, dbusservicename):
 		return False
 	return True
 
-def create(dbusmonitor, remoteservice, settings, instance):
-	i = FischerPandaGenerator(instance)
+def create(dbusmonitor, remoteservice, settings):
+	i = FischerPandaGenerator(device_instance)
 	i.set_sources(dbusmonitor, settings, name, remoteservice)
 	return i
 

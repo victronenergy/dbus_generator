@@ -260,7 +260,7 @@ class Generator(object):
 			# Check and create start/stop instance for the device
 			if i.check_device(self._dbusmonitor, service):
 				self._instances[service] = i.create(self._dbusmonitor,
-												service, self._settings, i.device_instance)
+												service, self._settings)
 
 	def _handle_builtin_relay(self, dbuspath):
 		function = self._dbusmonitor.get_value('com.victronenergy.settings', dbuspath)
@@ -272,7 +272,7 @@ class Generator(object):
 		if function == 1:
 			self._instances[relaynr] = relay.create(self._dbusmonitor,
 													relayservice,
-													self._settings, relay.device_instance)
+													self._settings)
 		elif relaynr in self._instances:
 			self._instances[relaynr].remove()
 			del self._instances[relaynr]
