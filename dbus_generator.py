@@ -20,14 +20,14 @@ import logging
 from gen_utils import dummy
 import time
 import relay
-import fischerpanda
+import genset
 from version import softwareversion
 
 class Generator(object):
 	def __init__(self):
 		self._exit = False
 		self._instances = {}
-		self._modules = [relay, fischerpanda]
+		self._modules = [relay, genset]
 
 		# Common dbus services/path
 		commondbustree = {

@@ -535,20 +535,20 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
-		self._set_setting('/Settings/FischerPanda0/AutoStartEnabled', 1)
-		self._set_setting('/Settings/FischerPanda0/AcLoad/Enabled', 1)
-		self._set_setting('/Settings/FischerPanda0/AcLoad/Measurement', 1)
-		self._set_setting('/Settings/FischerPanda0/AcLoad/StartValue', 2200)
-		self._set_setting('/Settings/FischerPanda0/AcLoad/StopValue', 800)
-		self._set_setting('/Settings/FischerPanda0/AcLoad/StartTimer', 0)
-		self._set_setting('/Settings/FischerPanda0/AcLoad/StopTimer', 0)
+		self._set_setting('/Settings/Generator1/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/StartValue', 2200)
+		self._set_setting('/Settings/Generator1/AcLoad/StopValue', 800)
+		self._set_setting('/Settings/Generator1/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/Generator1/AcLoad/StopTimer', 0)
 
 		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/ErrorCode', 0)
 		self._update_values()
 		self._check_values(1, {
 			'/State': States.STOPPED
 		})
-		self._set_setting('/Settings/FischerPanda0/AcLoad/StartValue', 1650)
+		self._set_setting('/Settings/Generator1/AcLoad/StartValue', 1650)
 		self._update_values()
 		self._check_values(1, {
 			'/State': States.RUNNING
@@ -565,23 +565,23 @@ class TestGenerator(TestGeneratorBase):
 			'/State': States.RUNNING
 		})
 
-	def test_fischerpanda_autostart_disabled(self):
+	def test_genset_autostart_disabled(self):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
-		self._set_setting('/Settings/FischerPanda0/AutoStartEnabled', 1)
-		self._set_setting('/Settings/FischerPanda0/AcLoad/Enabled', 1)
-		self._set_setting('/Settings/FischerPanda0/AcLoad/Measurement', 1)
-		self._set_setting('/Settings/FischerPanda0/AcLoad/StartValue', 2200)
-		self._set_setting('/Settings/FischerPanda0/AcLoad/StopValue', 800)
-		self._set_setting('/Settings/FischerPanda0/AcLoad/StartTimer', 0)
-		self._set_setting('/Settings/FischerPanda0/AcLoad/StopTimer', 0)
+		self._set_setting('/Settings/Generator1/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/StartValue', 2200)
+		self._set_setting('/Settings/Generator1/AcLoad/StopValue', 800)
+		self._set_setting('/Settings/Generator1/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/Generator1/AcLoad/StopTimer', 0)
 
 		self._update_values()
 		self._check_values(1, {
 			'/State': States.STOPPED
 		})
-		self._set_setting('/Settings/FischerPanda0/AcLoad/StartValue', 1650)
+		self._set_setting('/Settings/Generator1/AcLoad/StartValue', 1650)
 		self._update_values()
 		self._check_values(1, {
 			'/State': States.RUNNING

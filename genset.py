@@ -6,8 +6,7 @@ import logging
 from gen_utils import dummy, Errors
 
 remoteprefix = 'com.victronenergy.genset'
-name = "FischerPanda0"
-productid = 0xB040
+name = "Generator1"
 device_instance = 1
 
 # List of the service/paths we need to monitor
@@ -23,21 +22,20 @@ monitoring = {
 
 # Determine if a startstop instance can be created for this device
 def check_device(dbusmonitor, dbusservicename):
-	# Check the product ID to determine if it's a Fischer Panda genset
-	# and also check if connected.
-	if dbusmonitor.get_value(dbusservicename, '/ProductId') != productid:
+	# Check if genset service supports auto-start and is connected.
+	if dbusmonitor.get_value(dbusservicename, '/AutoStart') is None:
 		return False
 	if dbusmonitor.get_value(dbusservicename, '/Connected') != 1:
 		return False
 	return True
 
 def create(dbusmonitor, remoteservice, settings):
-	i = FischerPandaGenerator(device_instance)
+	i = Genset(device_instance)
 	i.set_sources(dbusmonitor, settings, name, remoteservice)
 	return i
 
-class FischerPandaGenerator(StartStop):
-	_driver = 1 # FischerPanda
+class Genset(StartStop):
+	_driver = 1 # Genset service
 	def _remote_setup(self):
 		self.enable()
 
