@@ -352,6 +352,10 @@ class StartStop(object):
 		# Service countdown, calculated by running time and service interval
 		self._dbusservice.add_path('/ServiceCounter', value=None)
 		self._dbusservice.add_path('/ServiceCounterReset', value=None, writeable=True, onchangecallback=self._reset_service_counter)
+		# Publish what service we're controlling, and the productid
+		self._dbusservice.add_path('/GensetService', value=self._remoteservice)
+		self._dbusservice.add_path('/GensetProductId',
+			value=self._dbusmonitor.get_value(self._remoteservice, '/ProductId'))
 
 		# We need to set the values after creating the paths to trigger the 'onValueChanged' event for the gui
 		# otherwise the gui will report the paths as invalid if we remove and recreate the paths without
