@@ -1091,9 +1091,9 @@ class StartStop(object):
 					self._dbusservice['/State'] = States.RUNNING
 			elif state == States.COOLDOWN:
 				# Start request during cool-down run, go back to RUNNING
-					self._set_ignore_ac1(False) # Put load back onto Generator
-					self._set_ignore_ac2(False)
-					self._dbusservice['/State'] = States.RUNNING
+				self._set_ignore_ac1(False) # Put load back onto Generator
+				self._set_ignore_ac2(False)
+				self._dbusservice['/State'] = States.RUNNING
 
 			# Update the RunningByCondition
 			if self._dbusservice['/RunningByCondition'] != condition:
