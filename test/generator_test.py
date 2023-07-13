@@ -23,6 +23,7 @@ import startstop
 
 # Monkey-patch dbus connection
 startstop.StartStop._create_dbus_service = lambda s: create_service(s)
+startstop.WAIT_FOR_ENGINE_STOP = 1
 
 def create_service(s):
 	serv = MockDbusService('com.victronenergy.generator.startstop{}'.format(s._instance))
@@ -1272,11 +1273,27 @@ class TestGenerator(TestGeneratorBase):
 		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
 			'/Ac/Control/IgnoreAcIn2'), 0)
 
+		# Wait for engine to stop, AC is ignored
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPING
+		})
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn1'), 1)
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn2'), 0)
+
+		# Engine has stopped, re-enable AC
 		sleep(1)
 		self._update_values()
 		self._check_values(0, {
 			'/State': States.STOPPED
 		})
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn1'), 0)
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn2'), 0)
 
 	def test_warmup_and_cooldown_ac2(self):
 		self._set_setting('/Settings/Generator0/WarmUpTime', 1)
@@ -1316,11 +1333,27 @@ class TestGenerator(TestGeneratorBase):
 		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
 			'/Ac/Control/IgnoreAcIn2'), 1)
 
+		# Wait for engine to stop, AC is ignored
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPING
+		})
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn1'), 0)
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn2'), 1)
+
+		# Engine has stopped, re-enable AC
 		sleep(1)
 		self._update_values()
 		self._check_values(0, {
 			'/State': States.STOPPED
 		})
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn1'), 0)
+		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
+			'/Ac/Control/IgnoreAcIn2'), 0)
 
 	def test_capabilities_no_warmupcooldown(self):
 		self._check_values(0, {'/Capabilities': 0})

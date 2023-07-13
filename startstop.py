@@ -47,6 +47,7 @@ Capabilities = enum(
 SYSTEM_SERVICE = 'com.victronenergy.system'
 BATTERY_PREFIX = '/Dc/Battery'
 HISTORY_DAYS = 30
+WAIT_FOR_ENGINE_STOP = 15
 
 def safe_max(args):
 	try:
@@ -547,7 +548,7 @@ class StartStop(object):
 		# Update current and accumulated runtime.
 		# By performance reasons, accumulated runtime is only updated
 		# once per 60s. When the generator stops is also updated.
-		if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP, States.COOLDOWN):
+		if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP, States.COOLDOWN, States.STOPPING):
 			mtime = monotonic_time.monotonic_time().to_seconds_double()
 			if (mtime - self._starttime) - self._last_runtime_update >= 60:
 				self._dbusservice['/Runtime'] = int(mtime - self._starttime)
@@ -1068,7 +1069,7 @@ class StartStop(object):
 
 		# This function will start the generator in the case generator not
 		# already running. When differs, the RunningByCondition is updated
-		running = state in (States.WARMUP, States.COOLDOWN, States.RUNNING)
+		running = state in (States.WARMUP, States.COOLDOWN, States.STOPPING, States.RUNNING)
 		if not (running and remote_running): # STOPPED, ERROR
 			if self._settings['warmuptime'] > 0:
 				# Remove load while warming up
@@ -1083,13 +1084,13 @@ class StartStop(object):
 			self._update_remote_switch()
 			self._starttime = monotonic_time.monotonic_time().to_seconds_double()
 			self.log_info('Starting generator by %s condition' % condition)
-		else: # WARMUP, COOLDOWN, RUNNING
+		else: # WARMUP, COOLDOWN, RUNNING, STOPPING
 			if state == States.WARMUP:
 				if monotonic_time.monotonic_time().to_seconds_double() - self._starttime > self._settings['warmuptime']:
 					self._set_ignore_ac1(False) # Release load onto Generator
 					self._set_ignore_ac2(False)
 					self._dbusservice['/State'] = States.RUNNING
-			elif state == States.COOLDOWN:
+			elif state in (States.COOLDOWN, States.STOPPING):
 				# Start request during cool-down run, go back to RUNNING
 				self._set_ignore_ac1(False) # Put load back onto Generator
 				self._set_ignore_ac2(False)
@@ -1106,7 +1107,7 @@ class StartStop(object):
 	def _stop_generator(self):
 		state = self._dbusservice['/State']
 		remote_running = self._get_remote_switch_state()
-		running = state in (States.WARMUP, States.COOLDOWN, States.RUNNING)
+		running = state in (States.WARMUP, States.COOLDOWN, States.STOPPING, States.RUNNING)
 
 		if running or remote_running:
 			if self._settings['cooldowntime'] > 0:
@@ -1127,8 +1128,20 @@ class StartStop(object):
 						return # Don't stop engine yet
 
 			# When we arrive here, a stop command was given during warmup, the
-			# cooldown timer expired, no cooldown was configured. Stop
-			# immediately.
+			# cooldown timer expired, or no cooldown was configured. Stop
+			# the engine, but if we're coming from cooldown, delay another
+			# while in the STOPPING state before reactivating AC-in.
+			if state == States.COOLDOWN:
+				self._dbusservice['/State'] = States.STOPPING
+				self._update_remote_switch() # Stop engine
+				return
+			elif state == States.STOPPING:
+				if monotonic_time.monotonic_time().to_seconds_double() - \
+						self._stoptime <= self._settings['cooldowntime'] + WAIT_FOR_ENGINE_STOP:
+					return # Wait for engine stop
+
+			# All other possibilities are handled now. Cooldown is over or not
+			# configured and we waited for the generator to shut down.
 			self._dbusservice['/State'] = States.STOPPED
 			self._update_remote_switch()
 			self._set_ignore_ac1(False)
