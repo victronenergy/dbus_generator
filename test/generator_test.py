@@ -1088,6 +1088,52 @@ class TestGenerator(TestGeneratorBase):
 			'/State': States.RUNNING
 		})
 
+	def test_soc_timer(self):
+		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator0/Soc/Enabled', 1)
+		self._set_setting('/Settings/Generator0/Soc/StartValue', 60)
+		self._set_setting('/Settings/Generator0/Soc/StopValue', 70)
+		self._set_setting('/Settings/Generator0/Soc/StartTimer', 2)
+		self._set_setting('/Settings/Generator0/Soc/StopTimer', 2)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', 60)
+
+		self._update_values()
+
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING,
+			'/RunningByCondition': "soc",
+			'/RunningByConditionCode': 4
+		})
+
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', 90)
+		self._update_values()
+
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING,
+			'/RunningByCondition': "soc",
+			'/RunningByConditionCode': 4
+		})
+
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+
 	def test_condition_cascade(self):
 		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)

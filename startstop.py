@@ -89,7 +89,7 @@ class SocCondition(Condition):
 	name = 'soc'
 	monitoring = 'battery'
 	boolean = False
-	timed = False
+	timed = True
 
 	def get_value(self):
 		return self.parent._get_battery().soc
