@@ -453,11 +453,20 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/AcLoad/StartTimer', 0)
 		self._set_setting('/Settings/Generator0/AcLoad/StopTimer', 0)
 		self._set_setting('/Settings/Generator0/Alarms/NoGeneratorAtAcIn', 1)
+		self._set_setting('/Settings/Generator0/WarmUpTime', 1)
+		self._set_setting('/Settings/Generator0/CoolDownTime', 1)
 
 		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 1650)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/Connected', 0)
 		self._monitor.set_value('com.victronenergy.system', '/Ac/ActiveIn/Source', 1)
 
+		self._update_values(320000)
+		self._check_values(0, {
+			'/Alarms/NoGeneratorAtAcIn': 0,
+			'/State': States.WARMUP
+		})
+
+		sleep(1)
 		self._update_values(300000)
 		self._check_values(0, {
 			'/Alarms/NoGeneratorAtAcIn': 0,
@@ -491,7 +500,22 @@ class TestGenerator(TestGeneratorBase):
 			'/State': States.RUNNING
 		})
 
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 100)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 100)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 100)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/ActiveIn/Connected', 0)
+		self._update_values(301000)
+		self._check_values(0, {
+			'/Alarms/NoGeneratorAtAcIn': 0,
+			'/State': States.COOLDOWN
+		})
+
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
+		self._update_values()
+
+		sleep(1)
 		self._update_values(300000)
 		self._check_values(0, {
 			'/Alarms/NoGeneratorAtAcIn': 2,

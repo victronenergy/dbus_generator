@@ -639,7 +639,7 @@ class StartStop(object):
 	def _detect_generator_at_acinput(self):
 		state = self._dbusservice['/State']
 
-		if state == States.STOPPED:
+		if state in [States.STOPPED, States.COOLDOWN, States.WARMUP]:
 			self._reset_acpower_inverter_input()
 			return
 
