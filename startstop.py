@@ -625,7 +625,9 @@ class StartStop(object):
 
 	def _evaluate_autostart_disabled_alarm(self):
 
-		if self._settings['autostart'] == 1 or self._settings['autostartdisabledalarm'] == 0:
+		if self._settings['autostart'] == 0 or \
+				self.get_error() != Errors.REMOTEDISABLED or \
+				self._settings['autostartdisabledalarm'] == 0:
 			self._autostart_last_time = self._get_monotonic_seconds()
 			if self._dbusservice['/Alarms/AutoStartDisabled'] != 0:
 				self._dbusservice['/Alarms/AutoStartDisabled'] = 0
