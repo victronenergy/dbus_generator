@@ -23,7 +23,7 @@ monitoring = {
 # Determine if a startstop instance can be created for this device
 def check_device(dbusmonitor, dbusservicename):
 	# Check if genset service supports auto-start and is connected.
-	if dbusmonitor.get_value(dbusservicename, '/AutoStart') is None:
+	if not dbusmonitor.seen(dbusservicename, '/AutoStart'):
 		return False
 	if dbusmonitor.get_value(dbusservicename, '/Connected') != 1:
 		return False
