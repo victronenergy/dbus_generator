@@ -528,6 +528,7 @@ class StartStop(object):
 		elif self._errorstate == 1:
 			# Error cleared
 			self._errorstate = 0
+			self._dbusservice['/State'] = States.STOPPED
 			self.log_info('Error state cleared, taking control of remote switch.')
 
 		start = False
