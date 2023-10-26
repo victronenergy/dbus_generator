@@ -5,13 +5,21 @@ from startstop import StartStop
 import logging
 from gen_utils import dummy, Errors
 
-remoteprefix = 'com.victronenergy.genset'
+remoteprefix = r'com.victronenergy.(dc)?genset'
 name = "Generator1"
 device_instance = 1
 
 # List of the service/paths we need to monitor
 monitoring = {
 	'com.victronenergy.genset': {
+		'/AutoStart': dummy,
+		'/Connected': dummy,
+		'/ErrorCode': dummy,
+		'/ProductId': dummy,
+		'/DeviceInstance': dummy,
+		'/Start': dummy
+		},
+	'com.victronenergy.dcgenset': {
 		'/AutoStart': dummy,
 		'/Connected': dummy,
 		'/ErrorCode': dummy,
