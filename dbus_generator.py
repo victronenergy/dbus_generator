@@ -19,6 +19,7 @@ from logger import setup_logging
 import logging
 from gen_utils import dummy
 import time
+import re
 import relay
 import genset
 from version import softwareversion
@@ -258,7 +259,7 @@ class Generator(object):
 	def _add_device(self, service):
 		for i in self._modules:
 			# Check if module can handle this service
-			if i.remoteprefix not in service:
+			if re.match(i.remoteprefix, service) is None:
 				continue
 			# Check and create start/stop instance for the device
 			if i.check_device(self._dbusmonitor, service):
