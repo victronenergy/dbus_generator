@@ -17,7 +17,8 @@ monitoring = {
 		'/Settings/Relay/Polarity': dummy,
 		},
 	'com.victronenergy.system': {
-		'/Relay/0/State': dummy
+		'/Relay/0/State': dummy,
+		'/DeviceInstance': dummy,
 		}
 	}
 

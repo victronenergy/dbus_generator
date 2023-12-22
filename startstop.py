@@ -355,6 +355,8 @@ class StartStop(object):
 		self._dbusservice.add_path('/ServiceCounterReset', value=None, writeable=True, onchangecallback=self._reset_service_counter)
 		# Publish what service we're controlling, and the productid
 		self._dbusservice.add_path('/GensetService', value=self._remoteservice)
+		self._dbusservice.add_path('/GensetInstance',
+			value=self._dbusmonitor.get_value(self._remoteservice, '/DeviceInstance'))
 		self._dbusservice.add_path('/GensetProductId',
 			value=self._dbusmonitor.get_value(self._remoteservice, '/ProductId'))
 

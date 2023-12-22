@@ -16,6 +16,7 @@ monitoring = {
 		'/Connected': dummy,
 		'/ErrorCode': dummy,
 		'/ProductId': dummy,
+		'/DeviceInstance': dummy,
 		'/Start': dummy
 		}
 	}
