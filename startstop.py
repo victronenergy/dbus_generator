@@ -348,6 +348,8 @@ class StartStop(object):
 		self._dbusservice.add_path('/AutoStartEnabled', value=None, writeable=True, onchangecallback=self._set_autostart)
 		# Accumulated runtime
 		self._dbusservice.add_path('/AccumulatedRuntime', value=None)
+		# Service interval
+		self._dbusservice.add_path('/ServiceInterval', value=None)
 		# Capabilities, where we can add bits
 		self._dbusservice.add_path('/Capabilities', value=0)
 		# Service countdown, calculated by running time and service interval
@@ -381,6 +383,7 @@ class StartStop(object):
 		self._dbusservice['/Alarms/AutoStartDisabled'] = 0
 		self._dbusservice['/AutoStartEnabled'] = self._settings['autostart']
 		self._dbusservice['/AccumulatedRuntime'] = int(self._settings['accumulatedtotal'])
+		self._dbusservice['/ServiceInterval'] = int(self._settings['serviceinterval'])
 		self._dbusservice['/ServiceCounter'] = None
 		self._dbusservice['/ServiceCounterReset'] = 0
 
@@ -485,6 +488,10 @@ class StartStop(object):
 															self._settings['testruninterval'])
 
 		if s == 'serviceinterval':
+			try:
+				self._dbusservice['/ServiceInterval'] = int(newvalue)
+			except TypeError:
+				pass
 			if newvalue == 0:
 				self._dbusservice['/ServiceCounter'] = None
 			else:
