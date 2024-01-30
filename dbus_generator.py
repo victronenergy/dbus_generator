@@ -158,7 +158,8 @@ class Generator(object):
 			'autostartdisabledalarm': ['/Settings/{0}/Alarms/AutoStartDisabled', 0, 0, 1],
 			# Warm-up and Cool-down
 			'warmuptime': ['/Settings/{0}/WarmUpTime', 0, 0, 600],
-			'cooldowntime': ['/Settings/{0}/CoolDownTime', 0, 0, 600]
+			'cooldowntime': ['/Settings/{0}/CoolDownTime', 0, 0, 600],
+			'generatorstoptime': ['/Settings/{0}/GeneratorStopTime', 0, 0, 600]
 			}
 
 		settings = {}

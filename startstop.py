@@ -47,7 +47,6 @@ Capabilities = enum(
 SYSTEM_SERVICE = 'com.victronenergy.system'
 BATTERY_PREFIX = '/Dc/Battery'
 HISTORY_DAYS = 30
-WAIT_FOR_ENGINE_STOP = 15
 
 def safe_max(args):
 	try:
@@ -1149,7 +1148,7 @@ class StartStop(object):
 				return
 			elif state == States.STOPPING:
 				if monotonic_time.monotonic_time().to_seconds_double() - \
-						self._stoptime <= self._settings['cooldowntime'] + WAIT_FOR_ENGINE_STOP:
+						self._stoptime <= self._settings['cooldowntime'] + self._settings['generatorstoptime']:
 					return # Wait for engine stop
 
 			# All other possibilities are handled now. Cooldown is over or not
