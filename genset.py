@@ -14,7 +14,7 @@ monitoring = {
 	'com.victronenergy.genset': {
 		'/AutoStart': dummy,
 		'/Connected': dummy,
-		'/ErrorCode': dummy,
+		'/Error/0/Id': dummy,
 		'/ProductId': dummy,
 		'/DeviceInstance': dummy,
 		'/Start': dummy
@@ -22,7 +22,7 @@ monitoring = {
 	'com.victronenergy.dcgenset': {
 		'/AutoStart': dummy,
 		'/Connected': dummy,
-		'/ErrorCode': dummy,
+		'/Error/0/Id': dummy,
 		'/ProductId': dummy,
 		'/DeviceInstance': dummy,
 		'/Start': dummy
@@ -52,7 +52,7 @@ class Genset(StartStop):
 		error = self._dbusservice['/Error']
 		autostart = bool(self._dbusmonitor.get_value(self._remoteservice, '/AutoStart'))
 		# Check for genset error
-		if self._dbusmonitor.get_value(self._remoteservice, '/ErrorCode') != Errors.NONE:
+		if self._dbusmonitor.get_value(self._remoteservice, '/Error/0/Id') != "":
 			self.set_error(Errors.REMOTEINFAULT)
 		elif error == Errors.REMOTEINFAULT:
 			self.clear_error()
