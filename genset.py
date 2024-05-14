@@ -12,7 +12,7 @@ device_instance = 1
 # List of the service/paths we need to monitor
 monitoring = {
 	'com.victronenergy.genset': {
-		'/AutoStart': dummy,
+		'/RemoteStartModeEnabled': dummy,
 		'/Connected': dummy,
 		'/Error/0/Id': dummy,
 		'/ProductId': dummy,
@@ -20,7 +20,7 @@ monitoring = {
 		'/Start': dummy
 		},
 	'com.victronenergy.dcgenset': {
-		'/AutoStart': dummy,
+		'/RemoteStartModeEnabled': dummy,
 		'/Connected': dummy,
 		'/Error/0/Id': dummy,
 		'/ProductId': dummy,
@@ -31,8 +31,8 @@ monitoring = {
 
 # Determine if a startstop instance can be created for this device
 def check_device(dbusmonitor, dbusservicename):
-	# Check if genset service supports auto-start and is connected.
-	if not dbusmonitor.seen(dbusservicename, '/AutoStart'):
+	# Check if genset service supports remote start and is connected.
+	if not dbusmonitor.seen(dbusservicename, '/RemoteStartModeEnabled'):
 		return False
 	if dbusmonitor.get_value(dbusservicename, '/Connected') != 1:
 		return False
@@ -50,16 +50,16 @@ class Genset(StartStop):
 
 	def _check_remote_status(self):
 		error = self._dbusservice['/Error']
-		autostart = bool(self._dbusmonitor.get_value(self._remoteservice, '/AutoStart'))
+		remotestart = bool(self._dbusmonitor.get_value(self._remoteservice, '/RemoteStartModeEnabled'))
 		# Check for genset error
 		if self._dbusmonitor.get_value(self._remoteservice, '/Error/0/Id', "") != "":
 			self.set_error(Errors.REMOTEINFAULT)
 		elif error == Errors.REMOTEINFAULT:
 			self.clear_error()
 
-		if autostart == 0 and error == Errors.NONE:
+		if remotestart == 0 and error == Errors.NONE:
 			self.set_error(Errors.REMOTEDISABLED)
-		elif autostart == 1 and error == Errors.REMOTEDISABLED:
+		elif remotestart == 1 and error == Errors.REMOTEDISABLED:
 			self.clear_error()
 
 	def _get_remote_switch_state(self):

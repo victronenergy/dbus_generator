@@ -155,7 +155,7 @@ class TestGenerator(TestGeneratorBase):
 		self._add_device('com.victronenergy.genset.socketcan_can1_di0_uc0',
 			values={
 				'/Start': 0,
-				'/AutoStart': 1,
+				'/RemoteStartModeEnabled': 1,
 				'/Connected': 1,
 				'/ProductId': 0xB040,
 				'/Error/0/Id': ""
@@ -613,7 +613,7 @@ class TestGenerator(TestGeneratorBase):
 			'/State': States.RUNNING
 		})
 
-		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/AutoStart', 0)
+		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/RemoteStartModeEnabled', 0)
 		sleep(2)
 		self._update_values()
 		self._check_values(1, {
@@ -622,7 +622,7 @@ class TestGenerator(TestGeneratorBase):
 			'/Alarms/AutoStartDisabled': 0,
 			'/Alarms/RemoteStartModeDisabled': 2
 		})
-		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/AutoStart', 1)
+		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/RemoteStartModeEnabled', 1)
 		self._set_setting('/Settings/Generator1/AutoStartEnabled', 0)
 		sleep(2)
 		self._update_values()
