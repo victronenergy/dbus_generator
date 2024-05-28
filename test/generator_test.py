@@ -155,10 +155,10 @@ class TestGenerator(TestGeneratorBase):
 		self._add_device('com.victronenergy.genset.socketcan_can1_di0_uc0',
 			values={
 				'/Start': 0,
-				'/RemoteStartModeEnabled': 1,
+				'/AutoStart': 1,
 				'/Connected': 1,
 				'/ProductId': 0xB040,
-				'/Error/0/Id': ""
+				'/ErrorCode': 0
 			})
 
 		self._add_device('com.victronenergy.vebus.ttyO1',
@@ -568,7 +568,7 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator1/AcLoad/StartTimer', 0)
 		self._set_setting('/Settings/Generator1/AcLoad/StopTimer', 0)
 
-		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/Error/0/Id', "")
+		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/ErrorCode', 0)
 		self._update_values()
 		self._check_values(1, {
 			'/State': States.STOPPED
@@ -578,13 +578,13 @@ class TestGenerator(TestGeneratorBase):
 		self._check_values(1, {
 			'/State': States.RUNNING
 		})
-		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/Error/0/Id', "e-17")
+		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/ErrorCode', 17)
 		self._update_values()
 		self._check_values(1, {
 			'/State': States.ERROR,
 			'/Error': Errors.REMOTEINFAULT
 		})
-		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/Error/0/Id', "")
+		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/ErrorCode', 0)
 		self._update_values()
 		self._check_values(1, {
 			'/State': States.RUNNING
@@ -612,13 +612,13 @@ class TestGenerator(TestGeneratorBase):
 			'/State': States.RUNNING
 		})
 
-		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/RemoteStartModeEnabled', 0)
+		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/AutoStart', 0)
 		self._update_values()
 		self._check_values(1, {
 			'/State': States.ERROR,
 			'/Error': Errors.REMOTEDISABLED
 		})
-		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/RemoteStartModeEnabled', 1)
+		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/AutoStart', 1)
 		self._update_values()
 		self._check_values(1, {
 			'/State': States.RUNNING,

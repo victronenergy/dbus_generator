@@ -5,24 +5,16 @@ from startstop import StartStop
 import logging
 from gen_utils import dummy, Errors
 
-remoteprefix = r'com.victronenergy.(dc)?genset'
+remoteprefix = 'com.victronenergy.genset'
 name = "Generator1"
 device_instance = 1
 
 # List of the service/paths we need to monitor
 monitoring = {
 	'com.victronenergy.genset': {
-		'/RemoteStartModeEnabled': dummy,
+		'/AutoStart': dummy,
 		'/Connected': dummy,
-		'/Error/0/Id': dummy,
-		'/ProductId': dummy,
-		'/DeviceInstance': dummy,
-		'/Start': dummy
-		},
-	'com.victronenergy.dcgenset': {
-		'/RemoteStartModeEnabled': dummy,
-		'/Connected': dummy,
-		'/Error/0/Id': dummy,
+		'/ErrorCode': dummy,
 		'/ProductId': dummy,
 		'/DeviceInstance': dummy,
 		'/Start': dummy
@@ -31,8 +23,8 @@ monitoring = {
 
 # Determine if a startstop instance can be created for this device
 def check_device(dbusmonitor, dbusservicename):
-	# Check if genset service supports remote start and is connected.
-	if not dbusmonitor.seen(dbusservicename, '/RemoteStartModeEnabled'):
+	# Check if genset service supports auto-start and is connected.
+	if not dbusmonitor.seen(dbusservicename, '/AutoStart'):
 		return False
 	if dbusmonitor.get_value(dbusservicename, '/Connected') != 1:
 		return False
@@ -50,16 +42,16 @@ class Genset(StartStop):
 
 	def _check_remote_status(self):
 		error = self._dbusservice['/Error']
-		remotestart = bool(self._dbusmonitor.get_value(self._remoteservice, '/RemoteStartModeEnabled'))
+		autostart = bool(self._dbusmonitor.get_value(self._remoteservice, '/AutoStart'))
 		# Check for genset error
-		if self._dbusmonitor.get_value(self._remoteservice, '/Error/0/Id') != "":
+		if self._dbusmonitor.get_value(self._remoteservice, '/ErrorCode') != Errors.NONE:
 			self.set_error(Errors.REMOTEINFAULT)
 		elif error == Errors.REMOTEINFAULT:
 			self.clear_error()
 
-		if remotestart == 0 and error == Errors.NONE:
+		if autostart == 0 and error == Errors.NONE:
 			self.set_error(Errors.REMOTEDISABLED)
-		elif remotestart == 1 and error == Errors.REMOTEDISABLED:
+		elif autostart == 1 and error == Errors.REMOTEDISABLED:
 			self.clear_error()
 
 	def _get_remote_switch_state(self):
