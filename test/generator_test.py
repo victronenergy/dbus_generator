@@ -23,7 +23,6 @@ import startstop
 
 # Monkey-patch dbus connection
 startstop.StartStop._create_dbus_service = lambda s: create_service(s)
-startstop.WAIT_FOR_ENGINE_STOP = 1
 startstop.AUTOSTART_DISABLED_ALARM_TIME = 1
 
 def create_service(s):
@@ -1331,6 +1330,7 @@ class TestGenerator(TestGeneratorBase):
 	def test_warmup_and_cooldown(self):
 		self._set_setting('/Settings/Generator0/WarmUpTime', 1)
 		self._set_setting('/Settings/Generator0/CoolDownTime', 1)
+		self._set_setting('/Settings/Generator0/GeneratorStopTime', 1)
 		self._services[0]['/ManualStart'] = 1
 		self._update_values()
 		self._check_values(0, {
