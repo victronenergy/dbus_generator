@@ -24,6 +24,7 @@ import startstop
 # Monkey-patch dbus connection
 startstop.StartStop._create_dbus_service = lambda s: create_service(s)
 startstop.WAIT_FOR_ENGINE_STOP = 1
+startstop.AUTOSTART_DISABLED_ALARM_TIME = 1
 
 def create_service(s):
 	serv = MockDbusService('com.victronenergy.generator.startstop{}'.format(s._instance))
@@ -594,6 +595,7 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
+		self._set_setting('/Settings/Generator1/Alarms/AutoStartDisabled', 1)
 		self._set_setting('/Settings/Generator1/AutoStartEnabled', 1)
 		self._set_setting('/Settings/Generator1/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator1/AcLoad/Measurement', 1)
@@ -613,16 +615,32 @@ class TestGenerator(TestGeneratorBase):
 		})
 
 		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/AutoStart', 0)
+		sleep(2)
 		self._update_values()
 		self._check_values(1, {
 			'/State': States.ERROR,
-			'/Error': Errors.REMOTEDISABLED
+			'/Error': Errors.REMOTEDISABLED,
+			'/Alarms/AutoStartDisabled': 0,
+			'/Alarms/RemoteStartModeDisabled': 2
 		})
 		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/AutoStart', 1)
+		self._set_setting('/Settings/Generator1/AutoStartEnabled', 0)
+		sleep(2)
+		self._update_values()
+		self._check_values(1, {
+			'/State': States.STOPPED,
+			'/Error': Errors.NONE,
+			'/Alarms/AutoStartDisabled': 2,
+			'/Alarms/RemoteStartModeDisabled': 0
+		})
+
+		self._set_setting('/Settings/Generator1/AutoStartEnabled', 1)
 		self._update_values()
 		self._check_values(1, {
 			'/State': States.RUNNING,
-			'/Error': Errors.NONE
+			'/Error': Errors.NONE,
+			'/Alarms/AutoStartDisabled': 0,
+			'/Alarms/RemoteStartModeDisabled': 0
 		})
 
 	def test_overload_alarm_vebus(self):

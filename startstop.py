@@ -47,6 +47,7 @@ Capabilities = enum(
 SYSTEM_SERVICE = 'com.victronenergy.system'
 BATTERY_PREFIX = '/Dc/Battery'
 HISTORY_DAYS = 30
+AUTOSTART_DISABLED_ALARM_TIME = 600
 
 def safe_max(args):
 	try:
@@ -271,8 +272,8 @@ class StartStop(object):
 		self._timer_runnning = 0
 
 		# The installer left autostart disabled
-		self.AUTOSTART_DISABLED_ALARM_TIME = 600
 		self._autostart_last_time = self._get_monotonic_seconds()
+		self._remote_start_mode_last_time = self._get_monotonic_seconds()
 
 
 		# Manual battery service selection is deprecated in favour
@@ -343,6 +344,7 @@ class StartStop(object):
 		self._dbusservice.add_path('/Alarms/NoGeneratorAtAcIn', value=None)
 		self._dbusservice.add_path('/Alarms/ServiceIntervalExceeded', value=None)
 		self._dbusservice.add_path('/Alarms/AutoStartDisabled', value=None)
+		self._dbusservice.add_path('/Alarms/RemoteStartModeDisabled', value=None)
 		# Autostart
 		self._dbusservice.add_path('/AutoStartEnabled', value=None, writeable=True, onchangecallback=self._set_autostart)
 		# Accumulated runtime
@@ -379,7 +381,8 @@ class StartStop(object):
 		self._dbusservice['/QuietHours'] = 0
 		self._dbusservice['/Alarms/NoGeneratorAtAcIn'] = 0
 		self._dbusservice['/Alarms/ServiceIntervalExceeded'] = 0
-		self._dbusservice['/Alarms/AutoStartDisabled'] = 0
+		self._dbusservice['/Alarms/AutoStartDisabled'] = 0			# GX auto start/stop
+		self._dbusservice['/Alarms/RemoteStartModeDisabled'] = 0	# Genset remote start mode
 		self._dbusservice['/AutoStartEnabled'] = self._settings['autostart']
 		self._dbusservice['/AccumulatedRuntime'] = int(self._settings['accumulatedtotal'])
 		self._dbusservice['/ServiceInterval'] = int(self._settings['serviceinterval'])
@@ -632,19 +635,36 @@ class StartStop(object):
 
 	def _evaluate_autostart_disabled_alarm(self):
 
-		if self._settings['autostart'] == 0 or \
-				self.get_error() != Errors.REMOTEDISABLED or \
-				self._settings['autostartdisabledalarm'] == 0:
+		if self._settings['autostartdisabledalarm'] == 0:
+			self._autostart_last_time = self._get_monotonic_seconds()
+			self._remote_start_mode_last_time = self._get_monotonic_seconds()
+			if self._dbusservice['/Alarms/AutoStartDisabled'] != 0:
+				self._dbusservice['/Alarms/AutoStartDisabled'] = 0
+			if self._dbusservice['/Alarms/RemoteStartModeDisabled'] != 0:
+				self._dbusservice['/Alarms/RemoteStartModeDisabled'] = 0
+			return
+
+		# GX auto start/stop alarm
+		if self._settings['autostart'] == 1:
 			self._autostart_last_time = self._get_monotonic_seconds()
 			if self._dbusservice['/Alarms/AutoStartDisabled'] != 0:
 				self._dbusservice['/Alarms/AutoStartDisabled'] = 0
-			return
+		else:
+			timedisabled = self._get_monotonic_seconds() - self._autostart_last_time
+			if timedisabled > AUTOSTART_DISABLED_ALARM_TIME and self._dbusservice['/Alarms/AutoStartDisabled'] != 2:
+				self.log_info("Autostart was left for more than %i seconds, triggering alarm." % int(timedisabled))
+				self._dbusservice['/Alarms/AutoStartDisabled'] = 2
 
-		timedisabled = self._get_monotonic_seconds() - self._autostart_last_time
-		if timedisabled > self.AUTOSTART_DISABLED_ALARM_TIME and self._dbusservice['/Alarms/AutoStartDisabled'] != 2:
-			self.log_info("Autostart was left for more than %i seconds, triggering alarm." % int(timedisabled))
-			self._dbusservice['/Alarms/AutoStartDisabled'] = 2
-
+		# Genset remote start mode alarm
+		if self.get_error() != Errors.REMOTEDISABLED:
+			self._remote_start_mode_last_time = self._get_monotonic_seconds()
+			if self._dbusservice['/Alarms/RemoteStartModeDisabled'] != 0:
+				self._dbusservice['/Alarms/RemoteStartModeDisabled'] = 0
+		else:
+			timedisabled = self._get_monotonic_seconds() - self._remote_start_mode_last_time
+			if timedisabled > AUTOSTART_DISABLED_ALARM_TIME and self._dbusservice['/Alarms/RemoteStartModeDisabled'] != 2:
+				self.log_info("Autostart was left for more than %i seconds, triggering alarm." % int(timedisabled))
+				self._dbusservice['/Alarms/RemoteStartModeDisabled'] = 2
 
 	def _detect_generator_at_acinput(self):
 		state = self._dbusservice['/State']
