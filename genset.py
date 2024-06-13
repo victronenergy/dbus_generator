@@ -44,7 +44,7 @@ class Genset(StartStop):
 		error = self._dbusservice['/Error']
 		autostart = bool(self._dbusmonitor.get_value(self._remoteservice, '/AutoStart'))
 		# Check for genset error
-		if self._dbusmonitor.get_value(self._remoteservice, '/ErrorCode') != Errors.NONE:
+		if self._dbusmonitor.get_value(self._remoteservice, '/ErrorCode', Errors.NONE) != Errors.NONE:
 			self.set_error(Errors.REMOTEINFAULT)
 		elif error == Errors.REMOTEINFAULT:
 			self.clear_error()
