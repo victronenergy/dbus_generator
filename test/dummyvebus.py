@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from dbus.mainloop.glib import DBusGMainLoop
-import gobject
+from gi.repository import GLib
 import argparse
 import sys
 import os
@@ -44,6 +44,6 @@ pvac_output = DbusDummyService(
 		'/Ac/Out/L1/P': {'initial': 0, 'update': 0}}
 	)
 
-logger.info('Connected to dbus, and switching over to gobject.MainLoop() (= event based)')
-mainloop = gobject.MainLoop()
+logger.info('Connected to dbus, and switching over to GLib.MainLoop() (= event based)')
+mainloop = GLib.MainLoop()
 mainloop.run()
