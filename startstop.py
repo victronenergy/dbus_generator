@@ -363,6 +363,7 @@ class StartStop(object):
 		self._dbusservice.add_path('/GensetProductId',
 			value=self._dbusmonitor.get_value(self._remoteservice, '/ProductId'))
 
+		self._dbusservice.register()
 		# We need to set the values after creating the paths to trigger the 'onValueChanged' event for the gui
 		# otherwise the gui will report the paths as invalid if we remove and recreate the paths without
 		# restarting the dbusservice.
