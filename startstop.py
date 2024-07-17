@@ -258,6 +258,7 @@ class StartStop(object):
 		self._remoteservice = None
 		self._name = None
 		self._enabled = False
+		self._useGensetHours = False	# Sync with genset operatinghours.
 		self._instance = instance
 
 		# One second per retry
@@ -391,6 +392,9 @@ class StartStop(object):
 		self._dbusservice['/ServiceCounter'] = None
 		self._dbusservice['/ServiceCounterReset'] = 0
 
+		# When this startstop instance controls a genset which reports operatinghours, make sure to synchronize with that.
+		self._useGensetHours = self._dbusmonitor.get_value(self._remoteservice, '/Engine/OperatingHours', None) is not None
+
 	@property
 	def capabilities(self):
 		return self._dbusservice['/Capabilities']
@@ -456,6 +460,10 @@ class StartStop(object):
 				dbusServiceName == self._vebusservice and \
 				dbusPath == '/Ac/State/AcIn1Available':
 			self._set_capabilities()
+
+		# If gensethours is updated, update the accumulated time.
+		if dbusPath == '/Engine/OperatingHours' and self._useGensetHours:
+			self._update_accumulated_time(gensetHours=changes['Value'])
 
 		if dbusServiceName != 'com.victronenergy.system':
 			return
@@ -564,7 +572,6 @@ class StartStop(object):
 		if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP, States.COOLDOWN, States.STOPPING):
 			mtime = monotonic_time.monotonic_time().to_seconds_double()
 			if (mtime - self._starttime) - self._last_runtime_update >= 60:
-				self._dbusservice['/Runtime'] = int(mtime - self._starttime)
 				self._update_accumulated_time()
 			elif self._last_runtime_update == 0:
 				self._dbusservice['/Runtime'] = int(mtime - self._starttime)
@@ -932,11 +939,27 @@ class StartStop(object):
 
 		return active
 
-	def _update_accumulated_time(self):
+	def _update_accumulated_time(self, gensetHours=None):
+
+		# Check if this instance is connected to a genset which reports operating hours. 
+		# If so, synchronize with that.
+		if (self._useGensetHours):
+			if (gensetHours is None):
+				gensetHours = self._dbusmonitor.get_value(self._remoteservice, '/Engine/OperatingHours', None)
+
+			# Failsafe
+			if (gensetHours is not None):
+				# If connected genset reports /Engine/OperatingHours, use that and also clear the offset value.
+				self._settings['accumulatedtotalOffset'] = 0
+				self._settings['accumulatedtotal'] = accumulatedtotal = gensetHours
+		else:
+			# Do not use genset hours
+			gensetHours = None
+
 		seconds = self._dbusservice['/Runtime']
 		accumulated = seconds - self._last_runtime_update
 
-		self._settings['accumulatedtotal'] = accumulatedtotal = int(self._settings['accumulatedtotal']) + accumulated
+		self._settings['accumulatedtotal'] = accumulatedtotal = gensetHours or int(self._settings['accumulatedtotal']) + accumulated
 		# Using calendar to get timestamp in UTC, not local time
 		today_date = str(calendar.timegm(datetime.date.today().timetuple()))
 
@@ -951,13 +974,17 @@ class StartStop(object):
 		else:
 			accumulated_days[today_date] = accumulated
 
+		if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP, States.COOLDOWN, States.STOPPING):
+			mtime = monotonic_time.monotonic_time().to_seconds_double()
+			self._dbusservice['/Runtime'] = int(mtime - self._starttime)
+
 		self._last_runtime_update = seconds
 
 		# Keep the historical with a maximum of HISTORY_DAYS
 		while len(accumulated_days) > HISTORY_DAYS:
 			accumulated_days.pop(min(accumulated_days.keys()), None)
 
-		# Upadate settings
+		# Update settings
 		self._settings['accumulateddaily'] = json.dumps(accumulated_days, sort_keys=True)
 		self._dbusservice['/TodayRuntime'] = self._interval_runtime(0)
 		self._dbusservice['/TestRunIntervalRuntime'] = self._interval_runtime(self._settings['testruninterval'])

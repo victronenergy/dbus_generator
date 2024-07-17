@@ -17,7 +17,8 @@ monitoring = {
 		'/Error/0/Id': dummy,
 		'/ProductId': dummy,
 		'/DeviceInstance': dummy,
-		'/Start': dummy
+		'/Start': dummy,
+		'/Engine/OperatingHours': dummy
 		},
 	'com.victronenergy.dcgenset': {
 		'/RemoteStartModeEnabled': dummy,
@@ -25,7 +26,8 @@ monitoring = {
 		'/Error/0/Id': dummy,
 		'/ProductId': dummy,
 		'/DeviceInstance': dummy,
-		'/Start': dummy
+		'/Start': dummy,
+		'/Engine/OperatingHours': dummy
 		},
 	'com.victronenergy.settings': {
 		'/Settings/Relay/Function': dummy,
