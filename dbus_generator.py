@@ -263,6 +263,15 @@ class Generator(object):
 				continue
 			# Check and create start/stop instance for the device
 			if i.check_device(self._dbusmonitor, service):
+
+				# Prevent another instance of the same module, as
+				# multiple instances are currently not supported
+				active_services = [j for j in self._instances if re.match(i.remoteprefix, j)]
+				if len(active_services) > 0:
+					logging.warning(f"Found { service }, but { i.name } is already " + \
+									f"running with { active_services[0] }, ignoring.")
+					continue
+
 				self._instances[service] = i.create(self._dbusmonitor,
 												service, self._settings)
 
