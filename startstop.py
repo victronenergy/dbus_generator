@@ -317,6 +317,7 @@ class StartStop(object):
 		self._dbusservice.add_path('/Type', value=self._driver)
 		# State: None = invalid, 0 = stopped, 1 = running, 2=Warm-up, 3=Cool-down
 		self._dbusservice.add_path('/State', value=None, gettextcallback=lambda p, v: States.get_description(v))
+		self._dbusservice.add_path('/Enabled', value=1)
 		# RunningByConditionCode: Numeric Companion to /RunningByCondition below, but
 		# also encompassing a Stopped state.
 		self._dbusservice.add_path('/RunningByConditionCode', value=None)
