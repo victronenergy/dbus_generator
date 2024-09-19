@@ -76,7 +76,9 @@ def create_dbus_service(instance):
 	# Use a private bus, so we can have multiple services
 	bus = dbus.Bus.get_session(private=True) if 'DBUS_SESSION_BUS_ADDRESS' in os.environ else dbus.Bus.get_system(private=True)
 
-	dbusservice = VeDbusService("com.victronenergy.generator.startstop{}".format(instance), bus=bus)
+	dbusservice = VeDbusService(
+		"com.victronenergy.generator.startstop{}".format(instance),
+		bus=bus, register=False)
 	dbusservice.add_mandatory_paths(
 		processname=sys.argv[0],
 		processversion=softwareversion,

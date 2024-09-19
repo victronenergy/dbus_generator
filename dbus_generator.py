@@ -11,7 +11,6 @@ from gi.repository import GLib
 
 # Victron packages
 sys.path.insert(1, os.path.join(os.path.dirname(__file__), 'ext', 'velib_python'))
-from vedbus import VeDbusService
 from ve_utils import exit_on_error
 from dbusmonitor import DbusMonitor
 from settingsdevice import SettingsDevice
