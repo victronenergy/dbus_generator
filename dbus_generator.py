@@ -145,6 +145,7 @@ class Generator(object):
 			'inverteroverloadenabled': ['/Settings/{0}/InverterOverload/Enabled', 0, 0, 1],
 			'inverteroverloadstarttimer': ['/Settings/{0}/InverterOverload/StartTimer', 20, 0, 10000],
 			'inverteroverloadstoptimer': ['/Settings/{0}/InverterOverload/StopTimer', 20, 0, 10000],
+			'inverteroverloadskipwarmup': ['/Settings/{0}/InverterOverload/SkipWarmup', 0, 0, 1],
 			# TestRun
 			'testrunenabled': ['/Settings/{0}/TestRun/Enabled', 0, 0, 1],
 			'testrunstartdate': ['/Settings/{0}/TestRun/StartDate', 1483228800, 0, 10000000000.1],

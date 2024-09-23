@@ -646,6 +646,9 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
 		self._set_setting('/Settings/Generator0/InverterOverload/Enabled', 1)
 		self._set_setting('/Settings/Generator0/InverterOverload/StartTimer', 0)
+		self._set_setting('/Settings/Generator0/InverterOverload/StopTimer', 0)
+		self._set_setting('/Settings/Generator0/WarmUpTime', 1)
+		self._set_setting('/Settings/Generator0/InverterOverload/SkipWarmup', 1)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/L3/Overload', 1)
 
 		self._update_values()
@@ -653,6 +656,19 @@ class TestGenerator(TestGeneratorBase):
 			'/State': States.RUNNING,
 			'/RunningByCondition': 'inverteroverload',
 			'/RunningByConditionCode': 9
+		})
+
+		# Check if warm-up can be skipped.
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/L3/Overload', 0)
+		self._set_setting('/Settings/Generator0/InverterOverload/SkipWarmup', 0)
+
+		self._update_values()
+		sleep(1)
+
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/L3/Overload', 1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.WARMUP
 		})
 
 	def test_hightemp_alarm_vebus(self):

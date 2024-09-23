@@ -1130,7 +1130,8 @@ class StartStop(object):
 		# already running. When differs, the RunningByCondition is updated
 		running = state in (States.WARMUP, States.COOLDOWN, States.STOPPING, States.RUNNING)
 		if not (running and remote_running): # STOPPED, ERROR
-			if self._settings['warmuptime'] > 0:
+			# There is an option to skip warm-up for the inverteroverload condition.
+			if self._settings['warmuptime'] and not (condition == "inverteroverload" and self._settings['inverteroverloadskipwarmup'] == 1):
 				# Remove load while warming up
 				self._set_ignore_ac(True)
 				self._dbusservice['/State'] = States.WARMUP
