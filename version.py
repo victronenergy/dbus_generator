@@ -1,1 +1,1 @@
-softwareversion = '1.6.22'
+softwareversion = '1.6.23'
