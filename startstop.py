@@ -364,6 +364,8 @@ class StartStop(object):
 			value=self._dbusmonitor.get_value(self._remoteservice, '/DeviceInstance'))
 		self._dbusservice.add_path('/GensetProductId',
 			value=self._dbusmonitor.get_value(self._remoteservice, '/ProductId'))
+		self._dbusservice.add_path('/DigitalInput/Running', value=None, writeable=True, onchangecallback=self._running_by_digital_input)
+		self._dbusservice.add_path('/DigitalInput/Input', value=None, writeable=True, onchangecallback=self._running_by_digital_input)
 
 		self._dbusservice.register()
 		# We need to set the values after creating the paths to trigger the 'onValueChanged' event for the gui
@@ -391,6 +393,8 @@ class StartStop(object):
 		self._dbusservice['/ServiceInterval'] = int(self._settings['serviceinterval'])
 		self._dbusservice['/ServiceCounter'] = None
 		self._dbusservice['/ServiceCounterReset'] = 0
+		self._dbusservice['/DigitalInput/Running'] = 0
+		self._dbusservice['/DigitalInput/Input'] = 0
 
 		# When this startstop instance controls a genset which reports operatinghours, make sure to synchronize with that.
 		self._useGensetHours = self._dbusmonitor.get_value(self._remoteservice, '/Engine/OperatingHours', None) is not None
@@ -566,16 +570,7 @@ class StartStop(object):
 			self._last_counters_check = today
 			self._update_accumulated_time()
 
-		# Update current and accumulated runtime.
-		# By performance reasons, accumulated runtime is only updated
-		# once per 60s. When the generator stops is also updated.
-		if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP, States.COOLDOWN, States.STOPPING):
-			mtime = monotonic_time.monotonic_time().to_seconds_double()
-			if (mtime - self._starttime) - self._last_runtime_update >= 60:
-				self._update_accumulated_time()
-			elif self._last_runtime_update == 0:
-				self._dbusservice['/Runtime'] = int(mtime - self._starttime)
-
+		self._update_runtime()
 
 		if self._evaluate_manual_start():
 			startbycondition = 'manual'
@@ -641,6 +636,18 @@ class StartStop(object):
 		elif (self._dbusservice['/Runtime'] >= self._settings['minimumruntime'] * 60
 			  or activecondition == 'manual'):
 			self._stop_generator()
+
+	def _update_runtime(self, just_stopped=False):
+		# Update current and accumulated runtime.
+		# By performance reasons, accumulated runtime is only updated
+		# once per 60s. When the generator stops is also updated.
+		if self._is_running or just_stopped:
+			mtime = monotonic_time.monotonic_time().to_seconds_double()
+			if (mtime - self._starttime) - self._last_runtime_update >= 60 or just_stopped:
+				self._dbusservice['/Runtime'] = int(mtime - self._starttime)
+				self._update_accumulated_time()
+			elif self._last_runtime_update == 0:
+				self._dbusservice['/Runtime'] = int(mtime - self._starttime)
 
 	def _evaluate_autostart_disabled_alarm(self):
 
@@ -879,8 +886,8 @@ class StartStop(object):
 			return False
 
 		start = False
-		# If the accumulated runtime during the tes trun interval is greater than '/TestRunIntervalRuntime'
-		# the tes trun must be skipped
+		# If the accumulated runtime during the test run interval is greater than '/TestRunIntervalRuntime'
+		# the test run must be skipped
 		needed = (self._settings['testrunskipruntime'] > self._dbusservice['/TestRunIntervalRuntime']
 					  or self._settings['testrunskipruntime'] == 0)
 		self._dbusservice['/SkipTestRun'] = int(not needed)
@@ -1139,7 +1146,7 @@ class StartStop(object):
 				self._dbusservice['/State'] = States.RUNNING
 
 			self._update_remote_switch()
-			self._starttime = monotonic_time.monotonic_time().to_seconds_double()
+
 			self.log_info('Starting generator by %s condition' % condition)
 		else: # WARMUP, COOLDOWN, RUNNING, STOPPING
 			if state == States.WARMUP:
@@ -1201,12 +1208,8 @@ class StartStop(object):
 						str(self._dbusservice['/RunningByCondition']))
 			self._dbusservice['/RunningByCondition'] = ''
 			self._dbusservice['/RunningByConditionCode'] = RunningConditions.Stopped
-			self._update_accumulated_time()
-			self._starttime = 0
-			self._dbusservice['/Runtime'] = 0
 			self._dbusservice['/ManualStartTimer'] = 0
 			self._manualstarttimer = 0
-			self._last_runtime_update = 0
 
 	@property
 	def _ac1_is_generator(self):
@@ -1231,6 +1234,24 @@ class StartStop(object):
 		# Engine should be started in these states
 		v = self._dbusservice['/State'] in (States.RUNNING, States.WARMUP, States.COOLDOWN)
 		self._set_remote_switch_state(dbus.Int32(v, variant_level=1))
+
+	def _running_by_digital_input(self, path, value):
+		return
+
+	def _generator_started(self):
+		self._starttime = monotonic_time.monotonic_time().to_seconds_double()
+		return
+
+	def _generator_stopped(self):
+		self._update_runtime(just_stopped=True)
+		self._dbusservice['/Runtime'] = 0
+		self._starttime = 0
+		self._last_runtime_update = 0
+		return
+
+	@property
+	def _is_running(self):
+		raise Exception('This function should be overridden')
 
 	def _get_remote_switch_state(self):
 		raise Exception('This function should be overridden')

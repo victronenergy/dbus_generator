@@ -3,6 +3,7 @@
 
 from startstop import StartStop
 import logging
+import monotonic_time
 from gen_utils import dummy, Errors
 
 remoteprefix = r'com.victronenergy.(dc)?genset'
@@ -18,7 +19,8 @@ monitoring = {
 		'/ProductId': dummy,
 		'/DeviceInstance': dummy,
 		'/Start': dummy,
-		'/Engine/OperatingHours': dummy
+		'/Engine/OperatingHours': dummy,
+		'/StatusCode': dummy
 		},
 	'com.victronenergy.dcgenset': {
 		'/RemoteStartModeEnabled': dummy,
@@ -27,7 +29,8 @@ monitoring = {
 		'/ProductId': dummy,
 		'/DeviceInstance': dummy,
 		'/Start': dummy,
-		'/Engine/OperatingHours': dummy
+		'/Engine/OperatingHours': dummy,
+		'/StatusCode': dummy
 		},
 	'com.victronenergy.settings': {
 		'/Settings/Relay/Function': dummy,
@@ -56,10 +59,12 @@ def create(dbusmonitor, remoteservice, settings):
 class Genset(StartStop):
 	_driver = 1 # Genset service
 	_helperrelayservice = None
+	_running = False
 
 	def _remote_setup(self):
 		self.enable()
 		self._check_enable_conditions(self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Function'))
+		self._check_if_running(self._dbusmonitor.get_value(self._remoteservice, '/StatusCode'))
 
 	def _check_remote_status(self):
 		error = self._dbusservice['/Error']
@@ -96,14 +101,30 @@ class Genset(StartStop):
 		if self._dbusservice is None:
 			return
 
-		if "/Settings/Relay/Function" in dbusPath:
+		if '/Settings/Relay/Function' in dbusPath:
 			self._check_enable_conditions(changes['Value'])
+		if '/StatusCode' in dbusPath:
+			self._check_if_running(changes['Value'])
 
 		super().dbus_value_changed(dbusServiceName, dbusPath, options, changes, deviceInstance)
 
 		# Make sure that the relay polarity is set to normally open.
 		if self._helperrelayservice is not None and self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Polarity') == 1:
 			self._dbusmonitor.set_value('com.victronenergy.settings', '/Settings/Relay/Polarity', 0)
+
+	def _check_if_running(self, statusCode):
+		if 1 <= statusCode <= 9:
+			if (not self._running):
+				self._running = True
+				super()._generator_started()
+		else:
+			if (self._running):
+				self._running = False
+				super()._generator_stopped()
+
+	@property
+	def _is_running(self):
+		return self._running
 
 	def _get_remote_switch_state(self):
 		# Do not drive the remote switch in case of error
