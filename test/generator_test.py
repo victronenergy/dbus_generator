@@ -158,7 +158,8 @@ class TestGenerator(TestGeneratorBase):
 				'/RemoteStartModeEnabled': 1,
 				'/Connected': 1,
 				'/ProductId': 0xB040,
-				'/Error/0/Id': ""
+				'/Error/0/Id': "",
+				'/StatusCode': 0
 			})
 
 		self._add_device('com.victronenergy.vebus.ttyO1',
