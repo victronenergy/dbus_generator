@@ -78,8 +78,12 @@ class Condition(object):
 		raise NotImplementedError("get_value")
 
 	@property
-	def vebus_service(self):
-		return self.parent._vebusservice if self.parent._vebusservice else ''
+	def multi_service(self):
+		return self.parent.multiservice
+
+	@property
+	def multi_service_type(self):
+		return self.parent.multiservice_type
 
 	@property
 	def monitor(self):
@@ -106,7 +110,7 @@ class AcLoadCondition(Condition):
 
 		for phase in ['L1', 'L2', 'L3']:
 			# Get the values directly from the inverter, systemcalc doesn't provide raw inverted power
-			loadOnAcOut.append(self.monitor.get_value(self.vebus_service, ('/Ac/Out/%s/P' % phase)))
+			loadOnAcOut.append(self.monitor.get_value(self.multi_service, ('/Ac/Out/%s/P' % phase)))
 
 			# Calculate total consumption, '/Ac/Consumption/%s/Power' is deprecated
 			c_i = self.monitor.get_value(SYSTEM_SERVICE, ('/Ac/ConsumptionOnInput/%s/Power' % phase))
@@ -157,7 +161,7 @@ class InverterTempCondition(Condition):
 	timed = True
 
 	def get_value(self):
-		v = self.monitor.get_value(self.vebus_service,
+		v = self.monitor.get_value(self.multi_service,
 			'/Alarms/HighTemperature')
 
 		# When multi is connected to CAN-bus, alarms are published to
@@ -167,7 +171,7 @@ class InverterTempCondition(Condition):
 			inverterHighTemp = []
 			for phase in ['L1', 'L2', 'L3']:
 				# Inverter alarms must be fetched directly from the inverter service
-				inverterHighTemp.append(self.monitor.get_value(self.vebus_service, ('/Alarms/%s/HighTemperature' % phase)))
+				inverterHighTemp.append(self.monitor.get_value(self.multi_service, ('/Alarms/%s/HighTemperature' % phase)))
 			return safe_max(inverterHighTemp)
 		return v
 
@@ -178,7 +182,7 @@ class InverterOverloadCondition(Condition):
 	timed = True
 
 	def get_value(self):
-		v = self.monitor.get_value(self.vebus_service,
+		v = self.monitor.get_value(self.multi_service,
 			'/Alarms/Overload')
 
 		# When multi is connected to CAN-bus, alarms are published to
@@ -188,10 +192,13 @@ class InverterOverloadCondition(Condition):
 			inverterOverload = []
 			for phase in ['L1', 'L2', 'L3']:
 				# Inverter alarms must be fetched directly from the inverter service
-				inverterOverload.append(self.monitor.get_value(self.vebus_service, ('/Alarms/%s/Overload' % phase)))
+				inverterOverload.append(self.monitor.get_value(self.multi_service, ('/Alarms/%s/Overload' % phase)))
 			return safe_max(inverterOverload)
 		return v
 
+# The 'Stop on AC [1/2] conditions are disabled for the Multi RS (acsystem)
+# The 'stop on AC' condition stops the generator, which is connected to one AC input when there is AC detected on the other.
+# Since the Multi RS only has one AC input, these conditions cannot be used.
 class StopOnAc1Condition(Condition):
 	name = 'stoponac1'
 	monitoring = 'vebus'
@@ -200,22 +207,31 @@ class StopOnAc1Condition(Condition):
 
 	def get_value(self):
 		# AC input 1
-		available = self.monitor.get_value(self.vebus_service,
-			'/Ac/State/AcIn1Available')
-		if available is None:
-			# Not supported in firmware, fall back to old behaviour
-			activein = self.monitor.get_value(self.vebus_service,
-				'/Ac/ActiveIn/ActiveInput')
+		if self.multi_service_type == 'vebus':
+			available = self.monitor.get_value(self.multi_service,
+				'/Ac/State/AcIn1Available')
+			if available is None:
+				# Not supported in firmware, fall back to old behaviour
+				activein = self.monitor.get_value(self.multi_service,
+					'/Ac/ActiveIn/ActiveInput')
 
-			# Active input is connected
-			connected = self.monitor.get_value(self.vebus_service,
-				'/Ac/ActiveIn/Connected')
-			if None not in (activein, connected):
-				return activein == 0 and connected == 1
-			return None
+				# Active input is connected
+				connected = self.monitor.get_value(self.multi_service,
+					'/Ac/ActiveIn/Connected')
+				if None not in (activein, connected):
+					return activein == 0 and connected == 1
+				return None
 
-		return bool(available)
+			return bool(available)
+		else:
+			# Disabled
+			return False
 
+# The StopOnAc2 condition cannot have the fallback to evaluating based on`/Ac/ActiveIn/ActiveInput` + `/Ac/ActiveIn/Connected`
+# Because these paths were present in the vebus firmware before `/Ac/State/AcIn2Available` was,
+# but switching over to AC input 2 was not supported in that firmware version.
+# So if the fallback were implemented for this condition as well, it would stop the
+# generator when AC in 2 becomes available but the quattro would not switch over.
 class StopOnAc2Condition(Condition):
 	name = 'stoponac2'
 	monitoring = 'vebus'
@@ -223,11 +239,15 @@ class StopOnAc2Condition(Condition):
 	timed = False
 
 	def get_value(self):
-		# AC input 2 available (used when grid is on AC-in-2)
-		available = self.monitor.get_value(self.vebus_service,
-			'/Ac/State/AcIn2Available')
+		if self.multi_service_type == 'vebus':
+			# AC input 2 available (used when grid is on AC-in-2)
+			available = self.monitor.get_value(self.multi_service,
+				'/Ac/State/AcIn2Available')
 
-		return None if available is None else bool(available)
+			return None if available is None else bool(available)
+		else:
+			# Disabled
+			return False
 
 class Battery(object):
 	def __init__(self, monitor, service, prefix):
@@ -285,11 +305,11 @@ class StartStop(object):
 		self._autostart_last_time = self._get_monotonic_seconds()
 		self._remote_start_mode_last_time = self._get_monotonic_seconds()
 
-
 		# Manual battery service selection is deprecated in favour
 		# of getting the values directly from systemcalc, we keep
 		# manual selected services handling for compatibility reasons.
 		self._vebusservice = None
+		self._acsystemservice = None
 		self._errorstate = 0
 		self._battery_service = None
 		self._battery_prefix = None
@@ -310,6 +330,15 @@ class StartStop(object):
 			StopOnAc1Condition.name:        StopOnAc1Condition(self),
 			StopOnAc2Condition.name:        StopOnAc2Condition(self)
 		})
+
+	# Return the active vebusservice or the acsystemservice.
+	@property
+	def multiservice(self):
+		return self._vebusservice if self._vebusservice else self._acsystemservice if self._acsystemservice else None
+
+	@property
+	def multiservice_type(self):
+		return self.multiservice.split('.')[2] if self.multiservice is not None else None
 
 	def set_sources(self, dbusmonitor, settings, name, remoteservice):
 		self._settings = SettingsPrefix(settings, name)
@@ -475,9 +504,9 @@ class StartStop(object):
 
 		# AcIn1Available is needed to determine capabilities, but may
 		# only show up later. So we have to wait for it here.
-		if self._vebusservice is not None and \
-				dbusServiceName == self._vebusservice and \
-				dbusPath == '/Ac/State/AcIn1Available':
+		if self.multiservice is not None and \
+				dbusServiceName == self.multiservice and \
+				dbusPath == '/Ac/State/AcIn1Available' or dbusPath == '/Ac/Control/IgnoreAcIn1':
 			self._set_capabilities()
 
 		# If gensethours is updated, update the accumulated time.
@@ -709,9 +738,13 @@ class StartStop(object):
 			self._reset_acpower_inverter_input()
 			return
 
-		vebus_service = self._vebusservice if self._vebusservice else ''
-		activein_state = self._dbusmonitor.get_value(
-			vebus_service, '/Ac/ActiveIn/Connected')
+		if self.multiservice_type == 'vebus':
+			activein_state = self._dbusmonitor.get_value(
+				self.multiservice, '/Ac/ActiveIn/Connected')
+		else:
+			active_input = self._dbusmonitor.get_value(
+				self.multiservice, '/Ac/ActiveIn/ActiveInput')
+			activein_state = None if active_input is None else 1 if 0 <= active_input <= 1 else 0
 
 		# Path not supported, skip evaluation
 		if activein_state == None:
@@ -1052,10 +1085,21 @@ class StartStop(object):
 		# Update capabilities
 		# The ability to ignore AC1/AC2 came in at the same time as
 		# AC availability and is used to detect it here.
-		readout_supported = self._dbusmonitor.get_value(self._vebusservice,
-			'/Ac/State/AcIn1Available') is not None
-		self._dbusservice['/Capabilities'] |= (
-			Capabilities.WarmupCooldown if readout_supported else 0)
+		if self.multiservice_type == 'vebus':
+			readout_supported = self._dbusmonitor.get_value(self.multiservice,
+				'/Ac/State/AcIn1Available') is not None
+			self._dbusservice['/Capabilities'] |= (
+				Capabilities.WarmupCooldown if readout_supported else 0)
+		# /Ac/State/AcIn1Available is not available on acsystem
+		# The vebus system also has the path '/Ac/Control/IgnoreAcIn1', but we can't use this to check for the
+		# capabilities because this path was already there before ignoring ac input 2 was supported in the vebus quattro.
+		# So if we were to use '/Ac/Control/IgnoreAcIn1' to set the capabilities on a vebus system, it would
+		# also be enabled on systems with older firmware which do not support it on input 2.
+		elif self.multiservice_type == 'acsystem':
+			ignore_ac_supported = self._dbusmonitor.get_value(self.multiservice,
+				'/Ac/Control/IgnoreAcIn1') is not None
+			self._dbusservice['/Capabilities'] |= (
+				Capabilities.WarmupCooldown if ignore_ac_supported else 0)
 
 	def _determineservices(self):
 		# batterymeasurement is either 'default' or 'com_victronenergy_battery_288/Dc/0'.
@@ -1117,16 +1161,36 @@ class StartStop(object):
 		# Get the default VE.Bus service
 		vebusservice = self._dbusmonitor.get_value('com.victronenergy.system', '/VebusService')
 		if vebusservice:
-			if self._vebusservice != vebusservice:
+			if self.multiservice != vebusservice:
 				self._vebusservice = vebusservice
+				self._acsystemservice = None
 				self._set_capabilities()
 				self.log_info('Vebus service (%s) found! Using it for generator start/stop' % vebusservice)
 		else:
-			if self._vebusservice is not None:
-				self.log_info('Vebus service (%s) dissapeared! Stop evaluating related conditions' % self._vebusservice)
+			acsystemservice = self._get_acsystem_service()
+			if acsystemservice:
+				if self.multiservice != acsystemservice:
+					self._acsystemservice = acsystemservice
+					self._vebusservice = None
+					self._set_capabilities()
+					self.log_info('AC system service (%s) found! Using it for generator start/stop' % acsystemservice)
 			else:
-				self.log_info('Error getting Vebus service!')
-			self._vebusservice = None
+				if self._vebusservice is not None:
+					self.log_info('Vebus service (%s) dissapeared! Stop evaluating related conditions' % self._vebusservice)
+				elif self._acsystemservice is not None:
+					self.log_info('AC system service (%s) dissapeared! Stop evaluating related conditions' % self._acsystemservice)
+				else:
+					self.log_info('Error getting Vebus or AC system service!')
+				self._vebusservice = None
+				self._acsystemservice = None
+
+	def _get_acsystem_service(self):
+		services = self._dbusmonitor.get_service_list()
+		for service in services:
+			if service.startswith('com.victronenergy.acsystem'):
+				if self._dbusmonitor.get_value(service, '/DeviceInstance') == 0:
+					return service
+		return None
 
 	def _get_servicename_by_instance(self, instance, service_type=None):
 		sv = None
@@ -1242,11 +1306,11 @@ class StartStop(object):
 	def _set_ignore_ac(self, ignore):
 		# This is here so the Multi/Quattro can be told to disconnect AC-in,
 		# so that we can do warm-up and cool-down.
-		if self._vebusservice is not None:
+		if self.multiservice is not None:
 			if self._ac1_is_generator:
-				self._dbusmonitor.set_value_async(self._vebusservice, '/Ac/Control/IgnoreAcIn1', dbus.Int32(ignore, variant_level=1))
+				self._dbusmonitor.set_value_async(self.multiservice, '/Ac/Control/IgnoreAcIn1', dbus.Int32(ignore, variant_level=1))
 			if self._ac2_is_generator:
-				self._dbusmonitor.set_value_async(self._vebusservice, '/Ac/Control/IgnoreAcIn2', dbus.Int32(ignore, variant_level=1))
+				self._dbusmonitor.set_value_async(self.multiservice, '/Ac/Control/IgnoreAcIn2', dbus.Int32(ignore, variant_level=1))
 
 	def _update_remote_switch(self):
 		# Engine should be started in these states
