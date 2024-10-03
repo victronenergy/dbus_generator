@@ -68,6 +68,17 @@ class Generator(object):
 				'/Ac/Control/IgnoreAcIn1': dummy,
 				'/Ac/Control/IgnoreAcIn2': dummy
 				},
+			'com.victronenergy.acsystem': {
+				'/Ac/Out/L1/P': dummy,
+				'/Ac/Out/L2/P': dummy,
+				'/Ac/Out/L3/P': dummy,
+				'/Alarms/HighTemperature': dummy,
+				'/Alarms/Overload': dummy,
+				'/DeviceInstance': dummy,
+				'/Ac/ActiveIn/ActiveInput': dummy,
+				'/Ac/Control/IgnoreAcIn1': dummy,
+				'/Ac/Control/IgnoreAcIn2': dummy
+				},
 			'com.victronenergy.system': {
 				'/Ac/ConsumptionOnInput/L1/Power': dummy,
 				'/Ac/ConsumptionOnInput/L2/Power': dummy,
