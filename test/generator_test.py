@@ -15,6 +15,7 @@ sys.path.insert(1, os.path.join(test_dir, '..'))
 import dbus_generator
 import mock_glib
 from logger import setup_logging
+import logging
 from mock_dbus_monitor import MockDbusMonitor
 from mock_dbus_service import MockDbusService
 from mock_settings_device import MockSettingsDevice
@@ -183,9 +184,23 @@ class TestGenerator(TestGeneratorBase):
 				'/Ac/ActiveIn/Connected': 0,
 				'/Ac/State/AcIn1Available': None, # not supported in older firmware
 				'/Ac/State/AcIn2Available': None,
-				'/Ac/Control/IgnoreAcIn1': 0,
-				'/Ac/Control/IgnoreAcIn2': 0,
+				'/Ac/Control/IgnoreAcIn1': None,
+				'/Ac/Control/IgnoreAcIn2': None,
 				'/Soc': 87
+				})
+
+		self._add_device('com.victronenergy.acsystem.socketcan_vecan0_sys0',
+			product_name='Multi RS',
+			instance=0,	# Fixed to 0, startstop looks for the acsystem service with device instance 0.
+			values={
+				'/Alarms/Overload': None,
+				'/Alarms/HighTemperature': None,
+				'/Ac/Out/L1/P': 500,
+				'/Ac/Out/L2/P': 500,
+				'/Ac/Out/L3/P': 500,
+				'/Ac/ActiveIn/ActiveInput': 1,
+				'/Ac/Control/IgnoreAcIn1': None,
+				'/Ac/Control/IgnoreAcIn2': None
 				})
 
 		self._add_device('com.victronenergy.battery.ttyO5',
@@ -196,7 +211,6 @@ class TestGenerator(TestGeneratorBase):
 							 '/Dc/0/Current': 10,
 							 '/Soc': 87
 						 })
-
 
 		# DBus service is not created till Settings/Relay/Function is 1
 		self._services = {i._instance: i._dbusservice for i in self._generator_._instances.values()}
@@ -397,10 +411,33 @@ class TestGenerator(TestGeneratorBase):
 			'/State': States.STOPPED
 		})
 
-	def test_acload(self):
+	def test_acload_vebus(self):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
+		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 2200)
+		self._set_setting('/Settings/Generator0/AcLoad/StopValue', 800)
+		self._set_setting('/Settings/Generator0/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/Generator0/AcLoad/StopTimer', 0)
+
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 1650)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING
+		})
+
+	def test_acload_acsystem(self):
+		self._monitor.set_value('com.victronenergy.system', '/VebusService', None)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L1/P', 700)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L2/P', 700)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L3/P', 700)
 		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 1)
@@ -514,6 +551,87 @@ class TestGenerator(TestGeneratorBase):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
+		self._update_values()
+
+		sleep(1)
+		self._update_values(300000)
+		self._check_values(0, {
+			'/Alarms/NoGeneratorAtAcIn': 2,
+			'/State': States.RUNNING
+		})
+
+	def test_detect_generator_acsystem(self):
+		self._monitor.set_value('com.victronenergy.system', '/VebusService', None)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L1/P', 700)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L2/P', 700)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L3/P', 700)
+		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/StopValue', 800)
+		self._set_setting('/Settings/Generator0/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/Generator0/AcLoad/StopTimer', 0)
+		self._set_setting('/Settings/Generator0/Alarms/NoGeneratorAtAcIn', 1)
+		self._set_setting('/Settings/Generator0/WarmUpTime', 1)
+		self._set_setting('/Settings/Generator0/CoolDownTime', 1)
+
+		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 1650)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/ActiveIn/ActiveInput', 240)
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ActiveIn/Source', 1)
+
+		self._update_values(320000)
+		self._check_values(0, {
+			'/Alarms/NoGeneratorAtAcIn': 0,
+			'/State': States.WARMUP
+		})
+
+		sleep(1)
+		self._update_values(300000)
+		self._check_values(0, {
+			'/Alarms/NoGeneratorAtAcIn': 0,
+			'/State': States.RUNNING
+		})
+
+		self._update_values()
+		self._check_values(0, {
+			'/Alarms/NoGeneratorAtAcIn': 2,
+			'/State': States.RUNNING
+		})
+
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/ActiveIn/ActiveInput', 0)
+		self._update_values(5000)
+		self._check_values(0, {
+			'/Alarms/NoGeneratorAtAcIn': 2,
+			'/State': States.RUNNING
+		})
+
+		self._monitor.set_value('com.victronenergy.system', '/Ac/ActiveIn/Source', 2)
+		self._update_values()
+		self._check_values(0, {
+			'/Alarms/NoGeneratorAtAcIn': 0,
+			'/State': States.RUNNING
+		})
+
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/ActiveIn/ActiveInput', 240)
+		self._update_values()
+		self._check_values(0, {
+			'/Alarms/NoGeneratorAtAcIn': 0,
+			'/State': States.RUNNING
+		})
+
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L1/P', 100)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L2/P', 100)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L3/P', 100)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/ActiveIn/ActiveInput', 240)
+		self._update_values(301000)
+		self._check_values(0, {
+			'/Alarms/NoGeneratorAtAcIn': 0,
+			'/State': States.COOLDOWN
+		})
+
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L1/P', 700)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L2/P', 700)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L3/P', 700)
 		self._update_values()
 
 		sleep(1)
@@ -672,11 +790,42 @@ class TestGenerator(TestGeneratorBase):
 			'/State': States.WARMUP
 		})
 
+	def test_overload_alarm_acsystem(self):
+		self._monitor.set_value('com.victronenergy.system', '/VebusService', None)
+		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator0/InverterOverload/Enabled', 1)
+		self._set_setting('/Settings/Generator0/InverterOverload/StartTimer', 0)
+		self._set_setting('/Settings/Generator0/InverterOverload/StopTimer', 0)
+		self._set_setting('/Settings/Generator0/WarmUpTime', 1)
+		self._set_setting('/Settings/Generator0/InverterOverload/SkipWarmup', 1)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Alarms/Overload', 1)
+
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING,
+			'/RunningByCondition': 'inverteroverload',
+			'/RunningByConditionCode': 9
+		})
+
 	def test_hightemp_alarm_vebus(self):
 		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
 		self._set_setting('/Settings/Generator0/InverterHighTemp/Enabled', 1)
 		self._set_setting('/Settings/Generator0/InverterHighTemp/StartTimer', 0)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Alarms/L1/HighTemperature', 1)
+
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING,
+			'/RunningByCondition': 'inverterhightemp',
+			'/RunningByConditionCode': 8
+		})
+
+	def test_hightemp_alarm_acsystem(self):
+		self._monitor.set_value('com.victronenergy.system', '/VebusService', None)
+		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator0/InverterHighTemp/Enabled', 1)
+		self._set_setting('/Settings/Generator0/InverterHighTemp/StartTimer', 0)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Alarms/HighTemperature', 1)
 
 		self._update_values()
 		self._check_values(0, {
@@ -719,10 +868,29 @@ class TestGenerator(TestGeneratorBase):
 			'/RunningByConditionCode': 9
 		})
 
-	def test_ac_highest_phase(self):
+	def test_ac_highest_phase_vebus(self):
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 550)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 660)
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 500)
+		self._update_values()
+		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/Generator0/AcLoad/Measurement', 2)
+		self._set_setting('/Settings/Generator0/AcLoad/StartValue', 520)
+		self._set_setting('/Settings/Generator0/AcLoad/StopValue', 500)
+		self._set_setting('/Settings/Generator0/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/Generator0/AcLoad/StopTimer', 0)
+
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING
+		})
+
+	def test_ac_highest_phase_acsystem(self):
+		self._monitor.set_value('com.victronenergy.system', '/VebusService', None)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L1/P', 550)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L2/P', 660)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Out/L3/P', 500)
 		self._update_values()
 		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
 		self._set_setting('/Settings/Generator0/AcLoad/Enabled', 1)
@@ -870,6 +1038,13 @@ class TestGenerator(TestGeneratorBase):
 		self._remove_device("com.victronenergy.vebus.ttyO1")
 		self._monitor.set_value('com.victronenergy.system', '/VebusService', None)
 
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING
+		})
+
+		self._remove_device("com.victronenergy.acsystem.socketcan_vecan0_sys0")
+
 		self._update_values(300000)
 		self._check_values(0, {
 			'/State': States.RUNNING
@@ -903,6 +1078,13 @@ class TestGenerator(TestGeneratorBase):
 		self._remove_device("com.victronenergy.vebus.ttyO1")
 		self._monitor.set_value('com.victronenergy.system', '/VebusService', None)
 
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING
+		})
+
+		self._remove_device("com.victronenergy.acsystem.socketcan_vecan0_sys0")
+
 		self._update_values(300000)
 		self._check_values(0, {
 			'/State': States.RUNNING
@@ -932,6 +1114,13 @@ class TestGenerator(TestGeneratorBase):
 
 		self._remove_device("com.victronenergy.vebus.ttyO1")
 		self._monitor.set_value('com.victronenergy.system', '/VebusService', None)
+
+		self._update_values(300000)
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+
+		self._remove_device("com.victronenergy.acsystem.socketcan_vecan0_sys0")
 
 		self._update_values(299000)
 		self._check_values(0, {
@@ -1348,6 +1537,8 @@ class TestGenerator(TestGeneratorBase):
 		self._set_setting('/Settings/Generator0/WarmUpTime', 1)
 		self._set_setting('/Settings/Generator0/CoolDownTime', 1)
 		self._set_setting('/Settings/Generator0/GeneratorStopTime', 1)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Control/IgnoreAcIn1', 0)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Control/IgnoreAcIn2', 0)
 		self._services[0]['/ManualStart'] = 1
 		self._update_values()
 		self._check_values(0, {
@@ -1400,9 +1591,70 @@ class TestGenerator(TestGeneratorBase):
 		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
 			'/Ac/Control/IgnoreAcIn2'), 0)
 
+	def test_warmup_and_cooldown_acsystem(self):
+		self._monitor.set_value('com.victronenergy.system', '/VebusService', None)
+		self._set_setting('/Settings/Generator0/WarmUpTime', 1)
+		self._set_setting('/Settings/Generator0/CoolDownTime', 1)
+		self._set_setting('/Settings/Generator0/GeneratorStopTime', 1)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Control/IgnoreAcIn1', 0)
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Control/IgnoreAcIn2', 0)
+		self._services[0]['/ManualStart'] = 1
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.WARMUP
+		})
+
+		# Test that generator input is ignored during warmup
+		self.assertEqual(self._monitor.get_value('com.victronenergy.acsystem.socketcan_vecan0_sys0',
+			'/Ac/Control/IgnoreAcIn1'), 1)
+		self.assertEqual(self._monitor.get_value('com.victronenergy.acsystem.socketcan_vecan0_sys0',
+			'/Ac/Control/IgnoreAcIn2'), 0)
+
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING
+		})
+
+		self._services[0]['/ManualStart'] = 0
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.COOLDOWN
+		})
+
+		# Test that generator input is ignored during cooldown
+		self.assertEqual(self._monitor.get_value('com.victronenergy.acsystem.socketcan_vecan0_sys0',
+			'/Ac/Control/IgnoreAcIn1'), 1)
+		self.assertEqual(self._monitor.get_value('com.victronenergy.acsystem.socketcan_vecan0_sys0',
+			'/Ac/Control/IgnoreAcIn2'), 0)
+
+		# Wait for engine to stop, AC is ignored
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPING
+		})
+		self.assertEqual(self._monitor.get_value('com.victronenergy.acsystem.socketcan_vecan0_sys0',
+			'/Ac/Control/IgnoreAcIn1'), 1)
+		self.assertEqual(self._monitor.get_value('com.victronenergy.acsystem.socketcan_vecan0_sys0',
+			'/Ac/Control/IgnoreAcIn2'), 0)
+
+		# Engine has stopped, re-enable AC
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED
+		})
+		self.assertEqual(self._monitor.get_value('com.victronenergy.acsystem.socketcan_vecan0_sys0',
+			'/Ac/Control/IgnoreAcIn1'), 0)
+		self.assertEqual(self._monitor.get_value('com.victronenergy.acsystem.socketcan_vecan0_sys0',
+			'/Ac/Control/IgnoreAcIn2'), 0)
+
 	def test_warmup_and_cooldown_ac2(self):
 		self._set_setting('/Settings/Generator0/WarmUpTime', 1)
 		self._set_setting('/Settings/Generator0/CoolDownTime', 1)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Control/IgnoreAcIn1', 0)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Control/IgnoreAcIn2', 0)
 
 		# Genset is on AC2
 		self._monitor.set_value('com.victronenergy.settings', '/Settings/SystemSetup/AcInput1', 1)
@@ -1460,13 +1712,21 @@ class TestGenerator(TestGeneratorBase):
 		self.assertEqual(self._monitor.get_value('com.victronenergy.vebus.ttyO1',
 			'/Ac/Control/IgnoreAcIn2'), 0)
 
-	def test_capabilities_no_warmupcooldown(self):
+	def test_capabilities_no_warmupcooldown_vebus(self):
 		self._check_values(0, {'/Capabilities': 0})
 		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/State/AcIn1Available', 1)
+		self._check_values(0, {'/Capabilities': 1}) # Startup and Cooldown is supported
+
+	def test_capabilities_no_warmupcooldown_acsystem(self):
+		self._monitor.set_value('com.victronenergy.system', '/VebusService', None)
+		self._check_values(0, {'/Capabilities': 0})
+		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Control/IgnoreAcIn1', 0)
 		self._check_values(0, {'/Capabilities': 1}) # Startup and Cooldown is supported
 
 if __name__ == '__main__':
 	# patch dbus_generator with mock glib
 	dbus_generator.GLib = mock_glib
 
-	unittest.main()
+	#logging.basicConfig(level=logging.DEBUG)
+	#runner = unittest.TextTestRunner(verbosity=2)
+	unittest.main()#(testRunner=runner)
