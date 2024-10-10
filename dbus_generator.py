@@ -28,6 +28,7 @@ class Generator(object):
 		self._exit = False
 		self._instances = {}
 		self._modules = [relay, genset]
+		self._ignored_genset_services = set()
 
 		# Common dbus services/path
 		commondbustree = {
@@ -266,6 +267,8 @@ class Generator(object):
 			self._instances[i].dbus_value_changed(dbusServiceName, dbusPath, options, changes, deviceInstance)
 
 	def _device_removed(self, dbusservicename, instance):
+		if dbusservicename in self._ignored_genset_services:
+			self._ignored_genset_services.remove(dbusservicename)
 		if dbusservicename == 'com.victronenergy.settings':
 			self._handle_builtin_relay('/Settings/Relay/Function')
 		for i in self._instances:
@@ -286,6 +289,28 @@ class Generator(object):
 				continue
 			# Check and create start/stop instance for the device
 			if i.check_device(self._dbusmonitor, service):
+
+				# Prevent another instance of the same module, as
+				# multiple instances are currently not supported
+				active_services = [j for j in self._instances if re.match(i.remoteprefix, j)]
+				if len(active_services) > 0:
+					active_service = active_services[0]
+					new_device_instance = self._dbusmonitor.get_value(service, '/DeviceInstance')
+					active_device_instance = self._dbusmonitor.get_value(self._instances[active_service].remoteservice, '/DeviceInstance')
+					if new_device_instance < active_device_instance:
+						self._instances[active_service].remove()
+						del self._instances[active_service]
+						self._ignored_genset_services.add(active_service) # Store the deactivated service so we can fall back to it later.
+						self._instances[service] = i.create(self._dbusmonitor,
+												service, self._settings)
+					else:
+						# Ignore this service because its device instance is higher than the one already running.
+						if service not in self._ignored_genset_services:
+							logging.warning(f"Found { service }, but { i.name } is already " + \
+											f"running with { active_service }, ignoring.")
+							self._ignored_genset_services.add(service)
+					continue
+
 				self._instances[service] = i.create(self._dbusmonitor,
 												service, self._settings)
 
@@ -307,8 +332,16 @@ class Generator(object):
 	def _remove_device(self, servicename):
 		if servicename in self._instances:
 			if self._instances[servicename] is not None:
+				genset_removed = isinstance(self._instances[servicename], genset.Genset)
+
 				self._instances[servicename].remove()
 				del self._instances[servicename]
+
+				# If there are ignored genset services, take the next to be controlled
+				if genset_removed and self._ignored_genset_services:
+					logging.info("Connected genset removed, taking another one, which was ignored earlier")
+					next_genset = self._ignored_genset_services.pop()
+					self._add_device(next_genset)
 
 	def terminate(self, signum, frame):
 		# Remove instances before exiting, remote services might need to perform actions before releasing control

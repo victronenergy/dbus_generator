@@ -24,6 +24,7 @@ import startstop
 
 # Monkey-patch dbus connection
 startstop.StartStop._create_dbus_service = lambda s: create_service(s)
+startstop.StartStop._remove_service = lambda s : None
 startstop.AUTOSTART_DISABLED_ALARM_TIME = 1
 
 def create_service(s):
@@ -58,6 +59,10 @@ class TestGeneratorBase(unittest.TestCase):
 		mock_glib.timer_manager.reset()
 		self._generator_ = MockGenerator()
 		self._monitor = self._generator_._dbusmonitor
+
+	# Call this when the startstop instance may have deleted its dbus service.
+	def update_services(self):
+		self._services = {i._instance: i._dbusservice for i in self._generator_._instances.values()}
 
 	def _update_values(self, interval=1000):
 		if not self._services:
@@ -154,6 +159,7 @@ class TestGenerator(TestGeneratorBase):
 			})
 
 		self._add_device('com.victronenergy.genset.socketcan_can1_di0_uc0',
+			instance=10,
 			values={
 				'/Start': 0,
 				'/RemoteStartModeEnabled': 1,
@@ -1790,10 +1796,47 @@ class TestGenerator(TestGeneratorBase):
 			'/RunningByConditionCode': 4
 		})
 
+	def test_multiple_gensets(self):
+		self._add_device('com.victronenergy.genset.socketcan_can1_di1_uc1',
+			instance=11,
+			values={
+				'/Start': 0,
+				'/RemoteStartModeEnabled': 1,
+				'/Connected': 1,
+				'/ProductId': 0xB040,
+				'/Error/0/Id': "",
+				'/StatusCode': 0
+			})
+
+		sleep(1)
+		self.update_services()
+		self._update_values()
+		self._check_values(1, {
+			'/GensetInstance': 10
+		})
+
+		self._add_device('com.victronenergy.genset.socketcan_can1_di2_uc2',
+			instance=9,
+			values={
+				'/Start': 0,
+				'/RemoteStartModeEnabled': 1,
+				'/Connected': 1,
+				'/ProductId': 0xB040,
+				'/Error/0/Id': "",
+				'/StatusCode': 0
+			})
+
+		sleep(1)
+		self.update_services()
+		self._update_values()
+		self._check_values(1, {
+			'/GensetInstance': 9
+		})
+
 if __name__ == '__main__':
 	# patch dbus_generator with mock glib
 	dbus_generator.GLib = mock_glib
 
-	#logging.basicConfig(level=logging.DEBUG)
+	logging.basicConfig(level=logging.ERROR)
 	#runner = unittest.TextTestRunner(verbosity=2)
 	unittest.main()#(testRunner=runner)

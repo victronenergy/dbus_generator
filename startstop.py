@@ -349,6 +349,10 @@ class StartStop(object):
 		})
 		self._tank_level_condition = StopOnTankLevelCondition(self)
 
+	@property
+	def remoteservice(self):
+		return self._remoteservice
+
 	# Return the active vebusservice or the acsystemservice.
 	@property
 	def multiservice(self):
