@@ -59,12 +59,16 @@ def create(dbusmonitor, remoteservice, settings):
 class Genset(StartStop):
 	_driver = 1 # Genset service
 	_helperrelayservice = None
+	_count_runtime_with_genset = False
 	_running = False
 
 	def _remote_setup(self):
 		self.enable()
 		self._check_enable_conditions(self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Function'))
-		self._check_if_running(self._dbusmonitor.get_value(self._remoteservice, '/StatusCode'))
+		status_code = self._dbusmonitor.get_value(self._remoteservice, '/StatusCode')
+		self._count_runtime_with_genset = status_code is not None
+		if self._count_runtime_with_genset:
+			self._check_if_running(status_code)
 
 	def _check_remote_status(self):
 		error = self._dbusservice['/Error']
@@ -113,14 +117,21 @@ class Genset(StartStop):
 			self._dbusmonitor.set_value('com.victronenergy.settings', '/Settings/Relay/Polarity', 0)
 
 	def _check_if_running(self, statusCode):
-		if 1 <= statusCode <= 9:
-			if (not self._running):
-				self._running = True
-				super()._generator_started()
-		else:
-			if (self._running):
-				self._running = False
-				super()._generator_stopped()
+		if statusCode is not None:
+			if 1 <= statusCode <= 9:
+				self._start()
+			else:
+				self._stop()
+
+	def _start(self):
+		if (not self._running):
+			self._running = True
+			super()._generator_started()
+
+	def _stop(self):
+		if (self._running):
+			self._running = False
+			super()._generator_stopped()
 
 	@property
 	def _is_running(self):
@@ -145,6 +156,9 @@ class Genset(StartStop):
 		if error in [Errors.REMOTEDISABLED, Errors.REMOTEINFAULT]:
 			return
 		self._dbusmonitor.set_value_async(self._remoteservice, '/Start', value)
+
+		if not self._count_runtime_with_genset:
+			self._start() if value else self._stop()
 
 		if (self._helperrelayservice):
 			self._dbusmonitor.set_value_async(self._helperrelayservice, '/Relay/0/State', value)
