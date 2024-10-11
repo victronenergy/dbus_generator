@@ -1207,13 +1207,13 @@ class StartStop(object):
 
 			# All other possibilities are handled now. Cooldown is over or not
 			# configured and we waited for the generator to shut down.
-			self._dbusservice['/State'] = States.STOPPED
-			self._update_remote_switch()
-			self._set_ignore_ac(False)
 			self.log_info('Stopping generator that was running by %s condition' %
 						str(self._dbusservice['/RunningByCondition']))
 			self._dbusservice['/RunningByCondition'] = ''
 			self._dbusservice['/RunningByConditionCode'] = RunningConditions.Stopped
+			self._dbusservice['/State'] = States.STOPPED
+			self._update_remote_switch()
+			self._set_ignore_ac(False)
 			self._dbusservice['/ManualStartTimer'] = 0
 			self._manualstarttimer = 0
 
