@@ -37,7 +37,6 @@ def create(dbusmonitor, remoteservice, settings):
 class RelayGenerator(StartStop):
 	_driver = 0 # Relay
 	_digitalInput = 0
-	_running = False
 
 	def _remote_setup(self):
 		self.enable()
@@ -48,18 +47,18 @@ class RelayGenerator(StartStop):
 	def _running_by_digital_input(self, path, value):
 		if path == '/DigitalInput/Running':
 			if value == 1: # Running
-				self._start()
+				super()._generator_started()
 			else: # Stopped
-				self._stop()
+				super()._generator_stopped()
 
 		elif path == '/DigitalInput/Input':
 			self._digitalInput = value
 			if value == 0:
 				# No longer using the digital input to update runtime. Sync running with the state of startstop.
-				if (not self._running and self._dbusservice['/State'] in (States.RUNNING, States.WARMUP, States.COOLDOWN, States.STOPPING)):
-					self._start() # Digital input was "Stopped", but control service is running -> Start counting runtime.
-				elif (self._running and self._dbusservice['/State'] not in (States.RUNNING, States.WARMUP, States.COOLDOWN, States.STOPPING)):
-					self._stop() # Digital input was "Running" but control service is stopped -> Stop counting runtime.
+				if (not self._generator_running and self._dbusservice['/State'] in (States.RUNNING, States.WARMUP, States.COOLDOWN, States.STOPPING)):
+					super()._generator_started() # Digital input was "Stopped", but control service is running -> Start counting runtime.
+				elif (self._generator_running and self._dbusservice['/State'] not in (States.RUNNING, States.WARMUP, States.COOLDOWN, States.STOPPING)):
+					super()._generator_stopped() # Digital input was "Running" but control service is stopped -> Stop counting runtime.
 				logging.info('No longer using digital input to count runtime for startstop instance %d' % device_instance)
 			else:
 				logging.info('Using digital input %d to count runtime for startstop instance %d' % (value, device_instance))
@@ -75,20 +74,6 @@ class RelayGenerator(StartStop):
 		# Nothing to check
 		pass
 
-	def _start(self):
-		if (not self._running):
-			self._running = True
-			super()._generator_started()
-
-	def _stop(self):
-		if (self._running):
-			self._running = False
-			super()._generator_stopped()
-
-	@property
-	def _is_running(self):
-		return self._running
-
 	def _get_remote_switch_state(self):
 		return self._dbusmonitor.get_value(self._remoteservice, '/Relay/0/State')
 
@@ -97,4 +82,4 @@ class RelayGenerator(StartStop):
 
 		# No digital input to monitor the generator, assume that it runs based on the state of the relay
 		if self._digitalInput == 0:
-			self._start() if value else self._stop()
+			super()._generator_started() if value else super()._generator_stopped()

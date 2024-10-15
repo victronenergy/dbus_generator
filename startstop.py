@@ -258,6 +258,7 @@ class StartStop(object):
 		self._remoteservice = None
 		self._name = None
 		self._enabled = False
+		self._generator_running = False
 		self._useGensetHours = False	# Sync with genset operatinghours.
 		self._instance = instance
 
@@ -266,7 +267,15 @@ class StartStop(object):
 		self._testrun_soc_retries = 0
 		self._last_counters_check = 0
 
-		self._starttime = 0
+		# Two different starttime values.
+		# starttime_fb is set by the modules (relay.py, genset.py) and will be set to the current time when
+		# the feedback mechanism (digital input / `/StatusCode`) indicates that the generator is running.
+		# The other one is set by startstop when commanding the module to start the generator and is used by the
+		# warm-up mechanism to ensure warm-up finishes without needing feedback that the generator has actually started.
+		# If there is no feedback mechanism in place, the values will be equal as the module will call '_generator_started()`
+		# right after receiving the start command from startstop.
+		self._starttime_fb = 0	# Starttime of the generator as reported by the feedback mechanism (e.g., digital input), if present
+		self._starttime = 0		# Starttime of the generator, maintained by startstop. Not influenced by feedback mechanism.
 		self._stoptime = 0 # Used for cooldown
 		self._manualstarttimer = 0
 		self._last_runtime_update = 0
@@ -400,6 +409,10 @@ class StartStop(object):
 
 		# When this startstop instance controls a genset which reports operatinghours, make sure to synchronize with that.
 		self._useGensetHours = self._dbusmonitor.get_value(self._remoteservice, '/Engine/OperatingHours', None) is not None
+
+	@property
+	def _is_running(self):
+		return self._generator_running
 
 	@property
 	def capabilities(self):
@@ -649,11 +662,11 @@ class StartStop(object):
 		# once per 60s. When the generator stops is also updated.
 		if self._is_running or just_stopped:
 			mtime = monotonic_time.monotonic_time().to_seconds_double()
-			if (mtime - self._starttime) - self._last_runtime_update >= 60 or just_stopped:
-				self._dbusservice['/Runtime'] = int(mtime - self._starttime)
+			if (mtime - self._starttime_fb) - self._last_runtime_update >= 60 or just_stopped:
+				self._dbusservice['/Runtime'] = int(mtime - self._starttime_fb)
 				self._update_accumulated_time()
 			elif self._last_runtime_update == 0:
-				self._dbusservice['/Runtime'] = int(mtime - self._starttime)
+				self._dbusservice['/Runtime'] = int(mtime - self._starttime_fb)
 
 	def _evaluate_autostart_disabled_alarm(self):
 
@@ -989,7 +1002,7 @@ class StartStop(object):
 
 		if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP, States.COOLDOWN, States.STOPPING):
 			mtime = monotonic_time.monotonic_time().to_seconds_double()
-			self._dbusservice['/Runtime'] = int(mtime - self._starttime)
+			self._dbusservice['/Runtime'] = int(mtime - self._starttime_fb)
 
 		self._last_runtime_update = seconds
 
@@ -1152,6 +1165,7 @@ class StartStop(object):
 				self._dbusservice['/State'] = States.RUNNING
 
 			self._update_remote_switch()
+			self._starttime = monotonic_time.monotonic_time().to_seconds_double()
 
 			self.log_info('Starting generator by %s condition' % condition)
 		else: # WARMUP, COOLDOWN, RUNNING, STOPPING
@@ -1216,6 +1230,7 @@ class StartStop(object):
 			self._set_ignore_ac(False)
 			self._dbusservice['/ManualStartTimer'] = 0
 			self._manualstarttimer = 0
+			self._starttime = 0
 
 	@property
 	def _ac1_is_generator(self):
@@ -1245,19 +1260,17 @@ class StartStop(object):
 		return
 
 	def _generator_started(self):
-		self._starttime = monotonic_time.monotonic_time().to_seconds_double()
-		return
+		if (not self._generator_running):
+			self._starttime_fb = monotonic_time.monotonic_time().to_seconds_double()
+			self._generator_running = True
 
 	def _generator_stopped(self):
-		self._update_runtime(just_stopped=True)
-		self._dbusservice['/Runtime'] = 0
-		self._starttime = 0
-		self._last_runtime_update = 0
-		return
-
-	@property
-	def _is_running(self):
-		raise Exception('This function should be overridden')
+		if (self._generator_running):
+			self._generator_running = False
+			self._update_runtime(just_stopped=True)
+			self._dbusservice['/Runtime'] = 0
+			self._starttime_fb = 0
+			self._last_runtime_update = 0
 
 	def _get_remote_switch_state(self):
 		raise Exception('This function should be overridden')

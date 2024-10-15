@@ -60,7 +60,6 @@ class Genset(StartStop):
 	_driver = 1 # Genset service
 	_helperrelayservice = None
 	_count_runtime_with_genset = False
-	_running = False
 
 	def _remote_setup(self):
 		self.enable()
@@ -119,23 +118,9 @@ class Genset(StartStop):
 	def _check_if_running(self, statusCode):
 		if statusCode is not None:
 			if 1 <= statusCode <= 9:
-				self._start()
+				super()._generator_started()
 			else:
-				self._stop()
-
-	def _start(self):
-		if (not self._running):
-			self._running = True
-			super()._generator_started()
-
-	def _stop(self):
-		if (self._running):
-			self._running = False
-			super()._generator_stopped()
-
-	@property
-	def _is_running(self):
-		return self._running
+				super()._generator_stopped()
 
 	def _get_remote_switch_state(self):
 		# Do not drive the remote switch in case of error
@@ -158,7 +143,7 @@ class Genset(StartStop):
 		self._dbusmonitor.set_value_async(self._remoteservice, '/Start', value)
 
 		if not self._count_runtime_with_genset:
-			self._start() if value else self._stop()
+			super()._generator_started() if value else super()._generator_stopped()
 
 		if (self._helperrelayservice):
 			self._dbusmonitor.set_value_async(self._helperrelayservice, '/Relay/0/State', value)
