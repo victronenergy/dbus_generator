@@ -646,13 +646,10 @@ class StartStop(object):
 		if self._errorstate:
 			return
 
+		mtime = monotonic_time.monotonic_time().to_seconds_double()
 		if start:
 			self._start_generator(startbycondition)
-		# Do not fully rely on the '/Runtime', since that can be reset externally when e.g. the digital input is off.
-		# So also call _stop_generator if the generator is already stopping (COOLDOWN or STOPPING).
-		# This allows the runtime to be reset before startstop has reached "STOPPED"
-		elif (self._dbusservice['/State'] in (States.COOLDOWN, States.STOPPING)
-				or self._dbusservice['/Runtime'] >= self._settings['minimumruntime'] * 60
+		elif (int(mtime - self._starttime) >= self._settings['minimumruntime'] * 60
 				or activecondition == 'manual'):
 			self._stop_generator()
 

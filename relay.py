@@ -62,6 +62,11 @@ class RelayGenerator(StartStop):
 				logging.info('No longer using digital input to count runtime for startstop instance %d' % device_instance)
 			else:
 				logging.info('Using digital input %d to count runtime for startstop instance %d' % (value, device_instance))
+				# Sync runtime counting with the state of the digital input.
+				if self._dbusservice['/DigitalInput/Running'] == 1:
+					super()._generator_started()
+				else:
+					super()._generator_stopped()
 
 		return True
 
