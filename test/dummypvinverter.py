@@ -2,7 +2,7 @@
 
 # takes data from the dbus, does calculations with it, and puts it back on
 from dbus.mainloop.glib import DBusGMainLoop
-import gobject
+from gi.repository import GLib
 import argparse
 import sys
 import os
@@ -36,6 +36,7 @@ DBusGMainLoop(set_as_default=True)
 
 pvac_output = DbusDummyService(
     servicename=args.name,
+    productname='PVInverter',
     deviceinstance=args.position,
     paths={
         '/Ac/L1/Power': {'initial': 0, 'update': 0},
@@ -44,8 +45,8 @@ pvac_output = DbusDummyService(
         '/Ac/Energy/Forward': {'initial': 0, 'update': 1},
         '/Position': {'initial': int(args.position), 'update': 0}})
 
-logger.info('Connected to dbus, and switching over to gobject.MainLoop() (= event based)')
-mainloop = gobject.MainLoop()
+logger.info('Connected to dbus, and switching over to GLib.MainLoop() (= event based)')
+mainloop = GLib.MainLoop()
 mainloop.run()
 
 
