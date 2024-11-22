@@ -1130,7 +1130,9 @@ class StartStop(object):
 		else:
 			oldservice = None
 
-		if batterymeasurement != 'default':
+		if batterymeasurement == 'default':
+			newbatteryservice = 'default'
+		elif batterymeasurement:
 			battery_instance = int(batterymeasurement.split('_', 3)[3].split('/')[0])
 			service_type = None
 
@@ -1140,8 +1142,6 @@ class StartStop(object):
 				service_type = 'battery'
 
 			newbatteryservice = self._get_servicename_by_instance(battery_instance, service_type)
-		elif batterymeasurement == 'default':
-			newbatteryservice = 'default'
 
 		if newbatteryservice and newbatteryservice != oldservice:
 			if selectedbattery == 'default':
