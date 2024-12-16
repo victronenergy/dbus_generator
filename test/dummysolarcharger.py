@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from dbus.mainloop.glib import DBusGMainLoop
-import gobject
+from gi.repository import GObject as gobject
 import argparse
 import sys
 import os
@@ -33,7 +33,12 @@ s = DbusDummyService(
     paths={
         '/Dc/0/Voltage': {'initial': 12},
         '/Dc/0/Current': {'initial': 0},
-	    '/Dc/0/Power': {'initial': 290, 'update': 1}
+	'/Dc/0/Power': {'initial': 290, 'update': 1},
+	'/Alarms/LowVoltage': {'initial': 0},
+	'/Alarms/HighVoltage': {'initial': 0},
+	'/Alarms/HighTemperature': {'initial': 0},
+	'/Alarms/ShortCircuit': {'initial': 0},
+	'/ErrorCode': {'initial': 0},
 },
     productname='Solarcharger',
     connection='VE.Direct port 1')
