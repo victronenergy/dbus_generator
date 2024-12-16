@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from dbus.mainloop.glib import DBusGMainLoop
-import gobject
+from gi.repository import GObject as gobject
 import argparse
 import sys
 import os
@@ -36,11 +36,23 @@ pvac_output = DbusDummyService(
 		'/Dc/0/Voltage': {'initial': 24, 'update': 0},
 		'/Dc/0/Current': {'initial': -3, 'update': 0},
 		'/Soc': {'initial': 80, 'update': 0},
-		'/State': {'initial': 1, 'update': 0},
+		'/State': {'initial': 4, 'update': 0},
+		'/Ac/NumberOfPhases': {'initial': 1, 'update': 0},
+		'/Mode': {'initial': 3, 'update': 0},
 		'/Ac/ActiveIn/ActiveInput': {'initial': 0, 'update': 0},
-		'/Alarms/HighTemperature': {'initial': 0, 'update': 0},
-		'/Alarms/Overload': {'initial': 0, 'update': 0},
+		'/VebusError': {'initial': 0},
+		'/Alarms/TemperatureSensor': {'initial': 0},
+		'/Alarms/VoltageSensor': {'initial': 0},
+		'/Alarms/LowBattery': {'initial': 0},
+		'/Alarms/Ripple': {'initial': 0},
+		'/Alarms/PhaseRotation': {'initial': 0},
+		'/Alarms/L1/HighTemperature': {'initial': 0},
+		'/Alarms/L1/Overload': {'initial': 0},
+		'/Alarms/GridLost': {'initial': 0},
+		'/Alarms/HighDcVoltage': {'initial': 0},
+		'/Alarms/HighDcCurrent': {'initial': 0},
 		'/Ac/Out/P': {'initial': 80, 'update': 0},
+		'/Ac/Out/L1/I': {'initial': 0, 'update': 0},
 		'/Ac/Out/L1/P': {'initial': 0, 'update': 0}}
 	)
 

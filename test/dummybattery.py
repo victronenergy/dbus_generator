@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from dbus.mainloop.glib import DBusGMainLoop
-import gobject
+from gi.repository import GObject as gobject
 import argparse
 import sys
 import os

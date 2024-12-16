@@ -2,7 +2,7 @@
 
 # takes data from the dbus, does calculations with it, and puts it back on
 from dbus.mainloop.glib import DBusGMainLoop
-import gobject
+from gi.repository import GObject as gobject
 import argparse
 import sys
 import os
