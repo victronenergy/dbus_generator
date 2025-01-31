@@ -314,7 +314,7 @@ class StartStop(object):
 		self._battery_service = None
 		self._battery_prefix = None
 
-		self._acpower_inverter_input = {
+		self._power_input_timer = {
 			'timeout': 0,
 			'unabletostart': False
 			}
@@ -382,6 +382,7 @@ class StartStop(object):
 		self._dbusservice.add_path('/QuietHours', value=None)
 		# Alarms
 		self._dbusservice.add_path('/Alarms/NoGeneratorAtAcIn', value=None)
+		self._dbusservice.add_path('/Alarms/NoGeneratorAtDcIn', value=None)
 		self._dbusservice.add_path('/Alarms/ServiceIntervalExceeded', value=None)
 		self._dbusservice.add_path('/Alarms/AutoStartDisabled', value=None)
 		self._dbusservice.add_path('/Alarms/RemoteStartModeDisabled', value=None)
@@ -580,7 +581,7 @@ class StartStop(object):
 		self._check_remote_status()
 		self._evaluate_startstop_conditions()
 		self._evaluate_autostart_disabled_alarm()
-		self._detect_generator_at_acinput()
+		self._detect_generator_at_input()
 		if self._dbusservice['/ServiceCounterReset'] == 1:
 			self._dbusservice['/ServiceCounterReset'] = 0
 
@@ -727,15 +728,15 @@ class StartStop(object):
 				self.log_info("Autostart was left for more than %i seconds, triggering alarm." % int(timedisabled))
 				self._dbusservice['/Alarms/RemoteStartModeDisabled'] = 2
 
-	def _detect_generator_at_acinput(self):
+	def _detect_generator_at_input(self):
 		state = self._dbusservice['/State']
 
 		if state in [States.STOPPED, States.COOLDOWN, States.WARMUP]:
-			self._reset_acpower_inverter_input()
+			self._reset_power_input_timer()
 			return
 
 		if self._settings['nogeneratoratacinalarm'] == 0:
-			self._reset_acpower_inverter_input()
+			self._reset_power_input_timer()
 			return
 
 		if self.multiservice_type == 'vebus':
@@ -757,22 +758,22 @@ class StartStop(object):
 		activein_connected = activein_state == 1
 
 		if generator_acsource and activein_connected:
-			if self._acpower_inverter_input['unabletostart']:
+			if self._power_input_timer['unabletostart']:
 				self.log_info('Generator detected at inverter AC input, alarm removed')
-			self._reset_acpower_inverter_input()
-		elif self._acpower_inverter_input['timeout'] < self.RETRIES_ON_ERROR:
-			self._acpower_inverter_input['timeout'] += 1
-		elif not self._acpower_inverter_input['unabletostart']:
-			self._acpower_inverter_input['unabletostart'] = True
+			self._reset_power_input_timer()
+		elif self._power_input_timer['timeout'] < self.RETRIES_ON_ERROR:
+			self._power_input_timer['timeout'] += 1
+		elif not self._power_input_timer['unabletostart']:
+			self._power_input_timer['unabletostart'] = True
 			self._dbusservice['/Alarms/NoGeneratorAtAcIn'] = 2
 			self.log_info('Generator not detected at inverter AC input, triggering alarm')
 
-	def _reset_acpower_inverter_input(self, clear_error=True):
-		if self._acpower_inverter_input['timeout'] != 0:
-			self._acpower_inverter_input['timeout'] = 0
+	def _reset_power_input_timer(self):
+		if self._power_input_timer['timeout'] != 0:
+			self._power_input_timer['timeout'] = 0
 
-		if self._acpower_inverter_input['unabletostart'] != 0:
-			self._acpower_inverter_input['unabletostart'] = 0
+		if self._power_input_timer['unabletostart'] != 0:
+			self._power_input_timer['unabletostart'] = False
 
 		self._dbusservice['/Alarms/NoGeneratorAtAcIn'] = 0
 
