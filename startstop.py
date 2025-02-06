@@ -38,7 +38,8 @@ RunningConditions = enum(
 		InverterHighTemp = 8,
 		InverterOverload = 9,
 		StopOnAc1 = 10,
-		StopOnAc2 = 11)
+		StopOnAc2 = 11,
+		StopOnTankLevel = 12)
 
 Capabilities = enum(
 	WarmupCooldown = 1
@@ -249,6 +250,22 @@ class StopOnAc2Condition(Condition):
 			# Disabled
 			return False
 
+class StopOnTankLevelCondition(Condition):
+	name = 'tanklevel'
+	monitoring = 'tank'
+	boolean = False
+	timed = False
+
+	@property
+	def tank_service(self):
+		return self.parent._tankservice
+
+	def get_value(self):
+		if self.tank_service is None:
+			return None
+		# Get the tank level from the tank service
+		return self.monitor.get_value(self.tank_service, '/Level')
+
 class Battery(object):
 	def __init__(self, monitor, service, prefix):
 		self.monitor = monitor
@@ -330,6 +347,7 @@ class StartStop(object):
 			StopOnAc1Condition.name:        StopOnAc1Condition(self),
 			StopOnAc2Condition.name:        StopOnAc2Condition(self)
 		})
+		self._tank_level_condition = StopOnTankLevelCondition(self)
 
 	# Return the active vebusservice or the acsystemservice.
 	@property
@@ -339,6 +357,10 @@ class StartStop(object):
 	@property
 	def multiservice_type(self):
 		return self.multiservice.split('.')[2] if self.multiservice is not None else None
+
+	@property
+	def _tankservice(self):
+		return self._settings['tankservice']
 
 	def set_sources(self, dbusmonitor, settings, name, remoteservice):
 		self._settings = SettingsPrefix(settings, name)
@@ -354,7 +376,7 @@ class StartStop(object):
 
 		# The driver used for this start/stop service
 		self._dbusservice.add_path('/Type', value=self._driver)
-		# State: None = invalid, 0 = stopped, 1 = running, 2=Warm-up, 3=Cool-down
+		# State: None = invalid, 0 = stopped, 1 = running, 2=Warm-up, 3=Cool-down, 4=Stopping, 5=Stopped by tank level, 10=Error
 		self._dbusservice.add_path('/State', value=None, gettextcallback=lambda p, v: States.get_description(v))
 		self._dbusservice.add_path('/Enabled', value=1)
 		# RunningByConditionCode: Numeric Companion to /RunningByCondition below, but
@@ -375,7 +397,7 @@ class StartStop(object):
 		# Next test run is needed 1, not needed 0
 		self._dbusservice.add_path('/SkipTestRun', value=None)
 		# Manual start
-		self._dbusservice.add_path('/ManualStart', value=None, writeable=True)
+		self._dbusservice.add_path('/ManualStart', value=None, writeable=True, onchangecallback=self._set_manual_start)
 		# Manual start timer
 		self._dbusservice.add_path('/ManualStartTimer', value=None, writeable=True)
 		# Silent mode active
@@ -386,6 +408,7 @@ class StartStop(object):
 		self._dbusservice.add_path('/Alarms/ServiceIntervalExceeded', value=None)
 		self._dbusservice.add_path('/Alarms/AutoStartDisabled', value=None)
 		self._dbusservice.add_path('/Alarms/RemoteStartModeDisabled', value=None)
+		self._dbusservice.add_path('/Alarms/StoppedByTankLevelCondition', value=None)
 		# Autostart
 		self._dbusservice.add_path('/AutoStartEnabled', value=None, writeable=True, onchangecallback=self._set_autostart)
 		# Accumulated runtime
@@ -407,6 +430,8 @@ class StartStop(object):
 			value=self._dbusmonitor.get_value(self._remoteservice, '/ProductId'))
 		self._dbusservice.add_path('/DigitalInput/Running', value=None, writeable=True, onchangecallback=self._running_by_digital_input)
 		self._dbusservice.add_path('/DigitalInput/Input', value=None, writeable=True, onchangecallback=self._running_by_digital_input)
+		self._dbusservice.add_path('/TankService', value=None, writeable=True)
+		self._dbusservice.add_path('/AvailableTankServices', value=None)
 
 		self._dbusservice.register()
 		# We need to set the values after creating the paths to trigger the 'onValueChanged' event for the gui
@@ -429,6 +454,7 @@ class StartStop(object):
 		self._dbusservice['/Alarms/ServiceIntervalExceeded'] = 0
 		self._dbusservice['/Alarms/AutoStartDisabled'] = 0			# GX auto start/stop
 		self._dbusservice['/Alarms/RemoteStartModeDisabled'] = 0	# Genset remote start mode
+		self._dbusservice['/Alarms/StoppedByTankLevelCondition'] = 0 # Raise warning when generator is stopped by tank level condition, 
 		self._dbusservice['/AutoStartEnabled'] = self._settings['autostart']
 		self._dbusservice['/AccumulatedRuntime'] = int(self._settings['accumulatedtotal'])
 		self._dbusservice['/ServiceInterval'] = int(self._settings['serviceinterval'])
@@ -448,11 +474,19 @@ class StartStop(object):
 	def capabilities(self):
 		return self._dbusservice['/Capabilities']
 
+	@property
+	def stopped_by_tank_level(self):
+		return self._dbusservice['/State'] == States.STOPPED_BY_TANK_LEVEL
+
 	def _set_autostart(self, path, value):
 		if 0 <= value <= 1:
 			self._settings['autostart'] = int(value)
 			return True
 		return False
+
+	def _set_manual_start(self, path, value):
+		# Manual start when generator is stopped by tank level condition is not allowed
+		return not (value and self.stopped_by_tank_level)
 
 	def enable(self):
 		if self._enabled:
@@ -485,9 +519,13 @@ class StartStop(object):
 		self._dbusservice = None
 
 	def device_added(self, dbusservicename, instance):
+		if dbusservicename.startswith('com.victronenergy.tank'):
+			self._gettankservices()
 		self._determineservices()
 
 	def device_removed(self, dbusservicename, instance):
+		if dbusservicename.startswith('com.victronenergy.tank'):
+			self._gettankservices()
 		self._determineservices()
 
 	def get_error(self):
@@ -521,6 +559,13 @@ class StartStop(object):
 
 		if dbusPath == '/VebusService':
 			self._determineservices()
+
+	def _gettankservices(self):
+		services = self._dbusmonitor.get_service_list(classfilter='com.victronenergy.tank')
+		ul = {}
+		for servicename, instance in services.items():
+			ul[servicename] = self._dbusmonitor.get_value(servicename, '/CustomName') or self._dbusmonitor.get_value(servicename, '/ProductName')
+		self._dbusservice['/AvailableTankServices'] = json.dumps(ul)
 
 	def handlechangedsetting(self, setting, oldvalue, newvalue):
 		if self._dbusservice is None:
@@ -601,6 +646,7 @@ class StartStop(object):
 			self.log_info('Error state cleared, taking control of remote switch.')
 
 		start = False
+		stop_by_tank = False
 		startbycondition = None
 		activecondition = self._dbusservice['/RunningByCondition']
 		today = calendar.timegm(datetime.date.today().timetuple())
@@ -617,61 +663,72 @@ class StartStop(object):
 
 		self._update_runtime()
 
-		if self._evaluate_manual_start():
+		if not self.stopped_by_tank_level and self._evaluate_manual_start():
 			startbycondition = 'manual'
 			start = True
 
 		# Conditions will only be evaluated if the autostart functionality is enabled
 		if self._settings['autostart'] == 1:
-
-			if self._evaluate_testrun_condition():
-				startbycondition = 'testrun'
-				start = True
-
-			# Evaluate stop on AC IN conditions first, when this conditions are enabled and reached the generator
-			# will stop as soon as AC IN in active. Manual and testrun conditions will make the generator start
-			# or keep it running.
-			stop_on_ac_reached = (self._evaluate_condition(self._condition_stack[StopOnAc1Condition.name]) or
-						       self._evaluate_condition(self._condition_stack[StopOnAc2Condition.name]))
-			stop_by_ac1_ac2 = startbycondition not in ['manual', 'testrun'] and stop_on_ac_reached
-
-			if stop_by_ac1_ac2 and running and activecondition not in ['manual', 'testrun']:
-				self.log_info('AC input available, stopping')
-
-			# Evaluate value conditions
-			for condition, data in self._condition_stack.items():
-				# Do not evaluate rest of conditions if generator is configured to stop
-				# when AC IN is available
-				if stop_by_ac1_ac2:
-					start = False
-					if running:
-						self._reset_condition(data)
-						continue
-					else:
-						break
-
-				# Don't short-circuit this, _evaluate_condition sets .reached
-				start = self._evaluate_condition(data) or start
-				startbycondition = condition if start and startbycondition is None else startbycondition
-				# Connection lost is set to true if the number of retries of one or more enabled conditions
-				# >= RETRIES_ON_ERROR
-				if data.enabled:
-					connection_lost = data.retries >= self.RETRIES_ON_ERROR
-
-			# If none condition is reached check if connection is lost and start/keep running the generator
-			# depending on '/OnLossCommunication' setting
-			if not start and connection_lost:
-				# Start always
-				if self._settings['onlosscommunication'] == 1:
+			if not self.stopped_by_tank_level:
+				if self._evaluate_testrun_condition():
+					startbycondition = 'testrun'
 					start = True
-					startbycondition = 'lossofcommunication'
-				# Keep running if generator already started
-				if running and self._settings['onlosscommunication'] == 2:
-					start = True
-					startbycondition = 'lossofcommunication'
+
+				# Evaluate stop on AC IN conditions first, when this conditions are enabled and reached the generator
+				# will stop as soon as AC IN in active. Manual and testrun conditions will make the generator start
+				# or keep it running.
+				stop_on_ac_reached = (self._evaluate_condition(self._condition_stack[StopOnAc1Condition.name]) or
+								self._evaluate_condition(self._condition_stack[StopOnAc2Condition.name]))
+				stop_by_ac1_ac2 = startbycondition not in ['manual', 'testrun'] and stop_on_ac_reached
+
+				if stop_by_ac1_ac2 and running and activecondition not in ['manual', 'testrun']:
+					self.log_info('AC input available, stopping')
+
+				# Evaluate value conditions
+				for condition, data in self._condition_stack.items():
+					# Do not evaluate rest of conditions if generator is configured to stop
+					# when AC IN is available
+					if stop_by_ac1_ac2:
+						start = False
+						if running:
+							self._reset_condition(data)
+							continue
+						else:
+							break
+
+					# Don't short-circuit this, _evaluate_condition sets .reached
+					start = self._evaluate_condition(data) or start
+					startbycondition = condition if start and startbycondition is None else startbycondition
+					# Connection lost is set to true if the number of retries of one or more enabled conditions
+					# >= RETRIES_ON_ERROR
+					if data.enabled:
+						connection_lost = data.retries >= self.RETRIES_ON_ERROR
+
+				# If none condition is reached check if connection is lost and start/keep running the generator
+				# depending on '/OnLossCommunication' setting
+				if not start and connection_lost:
+					# Start always
+					if self._settings['onlosscommunication'] == 1:
+						start = True
+						startbycondition = 'lossofcommunication'
+					# Keep running if generator already started
+					if running and self._settings['onlosscommunication'] == 2:
+						start = True
+						startbycondition = 'lossofcommunication'
+
+			# Stop generator on tank level condition
+			# Returns true when the generator is stopped by the tank level condition
+			stop_by_tank = self._evaluate_tank_level_condition()
+			if stop_by_tank and not self.stopped_by_tank_level:
+				start = False
+				self._dbusservice['/ManualStart'] = 0
+				if self._settings['tanklevelwarningenabled'] == 1:
+					self._dbusservice['/Alarms/StoppedByTankLevelCondition'] = 1
+			if not stop_by_tank and self.stopped_by_tank_level:
+				self._dbusservice['/Alarms/StoppedByTankLevelCondition'] = 0
 
 		if not start and self._errorstate:
-			self._stop_generator()
+			self._stop_generator(stop_by_tank=stop_by_tank)
 
 		if self._errorstate:
 			return
@@ -681,7 +738,7 @@ class StartStop(object):
 			self._start_generator(startbycondition)
 		elif (int(mtime - self._starttime) >= self._settings['minimumruntime'] * 60
 				or activecondition == 'manual'):
-			self._stop_generator()
+			self._stop_generator(stop_by_tank=stop_by_tank)
 
 	def _update_runtime(self, just_stopped=False):
 		# Update current and accumulated runtime.
@@ -827,6 +884,18 @@ class StartStop(object):
 			condition['retries'] = 0
 
 		return condition['valid']
+
+	def _evaluate_tank_level_condition(self):
+		value = self._tank_level_condition.get_value()
+		if not self._check_condition(self._tank_level_condition, value):
+			return False
+
+		stopvalue = self._settings['tanklevelstop']
+		# Can't evaluate the condition, don't stop the generator.
+		if value is None or stopvalue is None:
+			return False
+
+		return value <= stopvalue
 
 	def _evaluate_condition(self, condition):
 		name = condition['name']
@@ -1248,7 +1317,7 @@ class StartStop(object):
 		self._dbusservice['/RunningByCondition'] = condition
 		self._dbusservice['/RunningByConditionCode'] = RunningConditions.lookup(condition)
 
-	def _stop_generator(self):
+	def _stop_generator(self, stop_by_tank=False):
 		state = self._dbusservice['/State']
 		remote_running = self._get_remote_switch_state()
 		running = state in (States.WARMUP, States.COOLDOWN, States.STOPPING, States.RUNNING)
@@ -1287,12 +1356,16 @@ class StartStop(object):
 						str(self._dbusservice['/RunningByCondition']))
 			self._dbusservice['/RunningByCondition'] = ''
 			self._dbusservice['/RunningByConditionCode'] = RunningConditions.Stopped
-			self._dbusservice['/State'] = States.STOPPED
+			self._dbusservice['/State'] = States.STOPPED_BY_TANK_LEVEL if stop_by_tank else States.STOPPED
 			self._update_remote_switch()
 			self._set_ignore_ac(False)
 			self._dbusservice['/ManualStartTimer'] = 0
 			self._manualstarttimer = 0
 			self._starttime = 0
+
+		# Reset to normal 'STOPPED' state if the stop by tank condition is resolved
+		elif state != States.ERROR:
+			self._dbusservice['/State'] = States.STOPPED_BY_TANK_LEVEL if stop_by_tank else States.STOPPED
 
 	@property
 	def _ac1_is_generator(self):

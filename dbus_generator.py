@@ -93,7 +93,13 @@ class Generator(object):
 				'/Dc/Battery/Voltage': dummy,
 				'/Dc/Battery/Current': dummy,
 				'/Dc/Battery/Soc': dummy
-				}
+				},
+			'com.victronenergy.tank': {
+				'/Level': dummy,
+				'/Status': dummy,
+				'/ProductName': dummy,
+				'/CustomName': dummy
+				},
 			}
 
 		# Settings base
@@ -157,6 +163,11 @@ class Generator(object):
 			'inverteroverloadstarttimer': ['/Settings/{0}/InverterOverload/StartTimer', 20, 0, 10000],
 			'inverteroverloadstoptimer': ['/Settings/{0}/InverterOverload/StopTimer', 20, 0, 10000],
 			'inverteroverloadskipwarmup': ['/Settings/{0}/InverterOverload/SkipWarmup', 0, 0, 1],
+			# Stop on tank level
+			'tanklevelenabled': ['/Settings/{0}/TankLevel/Enabled', 0, 0, 1],
+			'tanklevelstop': ['/Settings/{0}/TankLevel/StopValue', 0, 0, 100],
+			'tankservice': ['/Settings/{0}/TankLevel/TankService', 'no tank service', 0, 0],
+			'tanklevelwarningenabled': ['/Settings/{0}/TankLevel/WarningEnabled', 1, 0, 1],
 			# TestRun
 			'testrunenabled': ['/Settings/{0}/TestRun/Enabled', 0, 0, 1],
 			'testrunstartdate': ['/Settings/{0}/TestRun/StartDate', 1483228800, 0, 10000000000.1],

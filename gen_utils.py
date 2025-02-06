@@ -39,6 +39,7 @@ class States(object):
 	WARMUP = 2
 	COOLDOWN = 3
 	STOPPING = 4
+	STOPPED_BY_TANK_LEVEL = 5
 	ERROR = 10
 
 	@staticmethod
@@ -48,8 +49,9 @@ class States(object):
 			'Running',
 			'Warm-up',
 			'Cool-down',
-			'Stopping'] + \
-		5 * [''] + [
+			'Stopping',
+			'Stopped by tank level'] + \
+		4 * [''] + [
 			'Error']
 		d = ''
 		try:
