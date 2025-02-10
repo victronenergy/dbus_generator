@@ -166,6 +166,7 @@ class Generator(object):
 			# Stop on tank level
 			'tanklevelenabled': ['/Settings/{0}/TankLevel/Enabled', 0, 0, 1],
 			'tanklevelstop': ['/Settings/{0}/TankLevel/StopValue', 0, 0, 100],
+			'tanklevelpreventstart': ['/Settings/{0}/TankLevel/PreventStartValue', 0, 0, 100],
 			'tankservice': ['/Settings/{0}/TankLevel/TankService', 'no tank service', 0, 0],
 			'tanklevelwarningenabled': ['/Settings/{0}/TankLevel/WarningEnabled', 1, 0, 1],
 			# TestRun

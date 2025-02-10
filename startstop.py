@@ -891,11 +891,12 @@ class StartStop(object):
 			return False
 
 		stopvalue = self._settings['tanklevelstop']
+		preventstartvalue = self._settings['tanklevelpreventstart']
 		# Can't evaluate the condition, don't stop the generator.
 		if value is None or stopvalue is None:
 			return False
 
-		return value <= stopvalue
+		return value <= stopvalue or (self.stopped_by_tank_level and value <= preventstartvalue)
 
 	def _evaluate_condition(self, condition):
 		name = condition['name']
