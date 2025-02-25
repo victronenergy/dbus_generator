@@ -211,6 +211,14 @@ class TestGenerator(TestGeneratorBase):
 							 '/Dc/0/Current': 10,
 							 '/Soc': 87
 						 })
+		
+		self._add_device('com.victronenergy.tank.dse_0',
+			product_name='tank',
+			instance=259,
+			values={
+				'/Level': 100,
+				'/ProductName': "Tank level sensor"
+			})
 
 		# DBus service is not created till Settings/Relay/Function is 1
 		self._services = {i._instance: i._dbusservice for i in self._generator_._instances.values()}
@@ -1722,6 +1730,65 @@ class TestGenerator(TestGeneratorBase):
 		self._check_values(0, {'/Capabilities': 0})
 		self._monitor.set_value('com.victronenergy.acsystem.socketcan_vecan0_sys0', '/Ac/Control/IgnoreAcIn1', 0)
 		self._check_values(0, {'/Capabilities': 1}) # Startup and Cooldown is supported
+
+	def test_tanklevel_condition(self):
+		self._set_setting('/Settings/Generator0/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator0/TankLevel/Enabled', 1)
+		self._set_setting('/Settings/Generator0/TankLevel/StopValue', 20)
+		self._set_setting('/Settings/Generator0/TankLevel/TankService', 'com.victronenergy.tank.dse_0')
+		self._set_setting('/Settings/Generator0/TankLevel/PreventStartValue', 50)
+		self._set_setting('/Settings/Generator0/TankLevel/WarningEnabled', 1)
+
+		self._set_setting('/Settings/Generator0/Soc/Enabled', 1)
+		self._set_setting('/Settings/Generator0/Soc/StartValue', 60)
+		self._set_setting('/Settings/Generator0/Soc/StopValue', 70)
+
+		self._monitor.set_value('com.victronenergy.tank.dse_0', '/Level', 100)
+		self._monitor.set_value('com.victronenergy.system', '/Dc/Battery/Soc', 60)
+
+		self._update_values()
+
+		self._check_values(0, {
+			'/State': States.RUNNING,
+			'/RunningByCondition': "soc",
+			'/RunningByConditionCode': 4
+		})
+
+		sleep(1)
+		self._update_values()
+
+		self._monitor.set_value('com.victronenergy.tank.dse_0', '/Level', 10)
+
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED_BY_TANK_LEVEL
+		})
+
+		self._monitor.set_value('com.victronenergy.tank.dse_0', '/Level', 40)
+
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.STOPPED_BY_TANK_LEVEL
+		})
+
+		self._monitor.set_value('com.victronenergy.tank.dse_0', '/Level', 100)
+
+		sleep(1)
+		self._update_values()
+
+		self._check_values(0, {
+			'/State': States.STOPPED,
+		})
+
+		sleep(1)
+		self._update_values()
+		self._check_values(0, {
+			'/State': States.RUNNING,
+			'/RunningByCondition': "soc",
+			'/RunningByConditionCode': 4
+		})
 
 if __name__ == '__main__':
 	# patch dbus_generator with mock glib
