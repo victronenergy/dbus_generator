@@ -556,6 +556,10 @@ class StartStop(object):
 		if dbusPath == '/Engine/OperatingHours' and self._useGensetHours:
 			self._update_accumulated_time(gensetHours=changes['Value'])
 
+		if dbusServiceName.startswith('com.victronenergy.tank') and dbusPath == '/CustomName':
+			# Custom name changed, update the available tank services
+			self._gettankservices()
+
 		if dbusServiceName != 'com.victronenergy.system':
 			return
 		if dbusPath == '/AutoSelectedBatteryMeasurement' and self._settings['batterymeasurement'] == 'default':
