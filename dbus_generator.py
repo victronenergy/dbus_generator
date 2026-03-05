@@ -292,8 +292,13 @@ class Generator(object):
 
 				# Prevent another instance of the same module, as
 				# multiple instances are currently not supported
+				# Except for DC gensets. When a new DC genset is added, notify the existing instance.
 				active_services = [j for j in self._instances if re.match(i.remoteprefix, j)]
 				if len(active_services) > 0:
+					if service.startswith('com.victronenergy.dcgenset'):
+						if hasattr(self._instances[active_services[0]], 'genset_added'):
+							self._instances[active_services[0]].genset_added(service, self._dbusmonitor.get_value(service, '/DeviceInstance'))
+						return
 					active_service = active_services[0]
 					new_device_instance = self._dbusmonitor.get_value(service, '/DeviceInstance')
 					active_device_instance = self._dbusmonitor.get_value(self._instances[active_service].remoteservice, '/DeviceInstance')
@@ -330,6 +335,12 @@ class Generator(object):
 			del self._instances[relaynr]
 
 	def _remove_device(self, servicename):
+		if servicename.startswith('com.victronenergy.dcgenset'):
+			# Find DcGensets instance and notify it
+			for i in self._instances:
+				if isinstance(self._instances[i], genset.DcGensets):
+					self._instances[i].genset_removed(servicename)
+					break
 		if servicename in self._instances:
 			if self._instances[servicename] is not None:
 				genset_removed = isinstance(self._instances[servicename], genset.Genset)

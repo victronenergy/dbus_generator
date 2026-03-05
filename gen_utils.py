@@ -65,6 +65,9 @@ class SettingsPrefix(object):
 		self._settings = settings
 		self._prefix = prefix
 
+	def addSettings(self, settings):
+		self._settings.addSettings(settings)
+
 	def removeprefix(self, setting):
 		return setting.replace(self._prefix, "")
 

@@ -154,6 +154,12 @@ class Genset(StartStop):
 		if (self._helperrelayservice):
 			self._dbusmonitor.set_value_async(self._helperrelayservice, '/Relay/0/State', value)
 
+	def genset_added(self, dbusservicename, instance):
+		pass
+
+	def genset_removed(self, dbusservicename, instance):
+		pass
+
 class DcGenset(Genset):
 	_connected = False
 
@@ -204,3 +210,267 @@ class DcGenset(Genset):
 	def _reset_power_input_timer(self):
 		super()._reset_power_input_timer()
 		self._dbusservice['/Alarms/NoGeneratorAtDcIn'] = 0
+
+	def genset_added(self, dbusservicename, instance):
+		if dbusservicename.startswith('com.victronenergy.dcgenset') and self._remoteservice != dbusservicename:
+			# Add settings for multiple DC gensets
+			self._settings.addSettings({'nogeneratoratdcinalarm{}'.format(name): ['/Settings/{}/Alarms/NoGeneratorAtDcIn'.format(name), 0, 0, 1],
+			# Setting to describe which gensets are enabled. String holding a comma-separated list of device instances, or 'all' or 'rotate' (use only one genset at a time, but rotate between them).
+						'gensetsenabled{}'.format(name): ['/Settings/{}/MultipleGensets/GensetsEnabled'.format(name), "all", "", ""],
+						'gensetsrotate{}'.format(name): ['/Settings/{}/MultipleGensets/LastRotated'.format(name), 0, 0, 0]})
+
+			# Upgrade to DCGensets class
+			self.__class__ = DcGensets
+			this_instance = self._dbusmonitor.get_value(self._remoteservice, '/DeviceInstance')
+			gensets = {this_instance: self._remoteservice, instance: dbusservicename}
+			logging.info(f'Multiple DC gensets detected, upgrading to DcGensets class')
+
+			# Add dbus paths for the genset services
+			if '/MultipleGensets/GensetsDetected' not in self._dbusservice:
+				self._dbusservice.add_path('/MultipleGensets/GensetsDetected', "", writeable=False)	# JSON list of genset services with their device instance and product id, e.g. [{"service": "com.victronenergy.dcgenset_1", "instance": 1}, {...}]
+				self._dbusservice.add_path('/MultipleGensets/GensetsEnabled', "", writeable=True, onchangecallback=self._handle_changed_value)	# Proxy path to /GensetsEnabled setting
+				self._dbusservice.add_path('/MultipleGensets/LastRotated', None, writeable=False)		# Proxy path to /LastRotated setting
+
+			self._remote_setup(gensets)
+
+class GensetService():
+	def __init__(self, _dbusmonitor, service_name):
+		self._dbusmonitor = _dbusmonitor
+		self.service_name = service_name
+
+	@property
+	def start(self):
+		return self._dbusmonitor.get_value(self.service_name, '/Start')
+
+	@start.setter
+	def start(self, value):
+		self._dbusmonitor.set_value_async(self.service_name, '/Start', value)
+
+	@property
+	def status_code(self):
+		return self._dbusmonitor.get_value(self.service_name, '/StatusCode')
+
+	@property
+	def remote_start_enabled(self):
+		return self._dbusmonitor.get_value(self.service_name, '/RemoteStartModeEnabled')
+
+	@property
+	def error(self):
+		return self._dbusmonitor.get_value(self.service_name, '/Error/0/Id')
+
+
+class DcGensets(DcGenset):
+	_gensets = {}
+	_genset_services = {}
+	_rotate = False
+
+	def _start_genset(self, value):
+		if not self._gensets or value is None:
+			return
+
+		if not self._rotate or value == 0 or len(self._gensets) == 1:
+			# Start/Stop all gensets
+			for g in self._gensets:
+				self._start_one_genset(self._gensets[g], value)
+			return
+
+		if self._rotate:
+			last_rotated = self._settings['gensetsrotate'] or 0
+			last = last_rotated
+			while True:
+				next = None
+				for g in self._rotation_order:
+					if g > last:
+						next = g
+						break
+				if next is None:
+					next = self._rotation_order[0]
+				logging.info(f'Trying to start genset with device instance {next}')
+				if self._start_one_genset(self._gensets[next], 1):
+					self._settings['gensetsrotate'] = next
+					self._dbusservice['/MultipleGensets/LastRotated'] = next
+					break
+				else:
+					last = next
+					if last == last_rotated:
+						logging.warning('None of the gensets could be started')
+						break
+
+	def _start_one_genset(self, genset, value):
+		if not genset.error:
+			genset.start = value
+			return True
+		return False
+
+	def _handle_changed_value(self, path, value):
+		if path == '/MultipleGensets/GensetsEnabled':
+			if value != 'all' and value != 'rotate' and not all(v.isdigit() for v in value.split(',')):
+				return False
+			if value != 'rotate':
+				self._dbusservice['/MultipleGensets/LastRotated'] = None
+			# This will invoke the handlechangedsetting callback
+			self._settings['gensetsenabled'] = value
+		return True
+
+	def handlechangedsetting(self, setting, oldvalue, newvalue):
+		if setting == 'gensetsenabled{}'.format(name):
+			self._check_enable_conditions()
+
+		super().handlechangedsetting(setting, oldvalue, newvalue)
+
+	def _probe_gensets(self):
+		# Check if the genset services list is still valid and remove the ones that are not there anymore.
+		# Loop over a copy of the genset services dict so we can modify the original dict while looping over it.
+		for instance, service in self._genset_services.copy().items():
+			if self._dbusmonitor.seen(service, '/DeviceInstance'):
+				# Double check if the instance is there
+				device_instance = self._dbusmonitor.get_value(service, '/DeviceInstance')
+				if device_instance != instance:
+					del self._genset_services[instance]
+
+	def _remote_setup(self, gensets = {}):
+		if gensets:
+			self._genset_services = gensets
+		# Set paths
+		json = [{"service": s, "instance": i} for i, s in self._genset_services.items()]
+		self._dbusservice['/MultipleGensets/GensetsDetected'] = json
+		self._dbusservice['/MultipleGensets/GensetsEnabled'] = self._settings['gensetsenabled']
+		if self._dbusservice['/MultipleGensets/GensetsEnabled'] == 'rotate' and self._settings['gensetsrotate'] is not None:
+			self._dbusservice['/MultipleGensets/LastRotated'] = self._settings['gensetsrotate']
+
+		self.enable()
+		self._check_enable_conditions()
+
+	def _check_enable_conditions(self, relaysetting = None):
+		# We don't do anything with the relay, but need the arg to remain compatible with the parent method signature
+		self._gensets = {}
+		gensets_enabled = self._settings['gensetsenabled']
+		logging.info(f'Checking enable conditions for DC gensets, enabled gensets: {gensets_enabled}')
+		need_all = gensets_enabled == 'all' or gensets_enabled == 'rotate'
+		self._rotate = (gensets_enabled == 'rotate')
+		instances = [int(x) for x in gensets_enabled.split(',') if x.isdigit()] if not need_all else []
+
+		# Update genset services list
+		self._probe_gensets()
+		if len(self._genset_services) <= 1:
+			logging.warning(f'Only {len(self._genset_services)} genset(s) detected, downgrading to single genset control')
+			self._downgrade_to_single_genset()
+			return
+
+		for instance, service in self._genset_services.items():
+			if need_all or instance in instances:
+				self._gensets[instance] = GensetService(self._dbusmonitor, service)
+
+		if len(self._gensets) == 0:
+			logging.warning('None of the desired gensets were found')
+			self._dbusservice['/MultipleGensets/GensetsEnabled'] = ""
+			self._settings['gensetsenabled'] = ""
+			return
+
+		if not need_all and len(instances) != len(self._gensets):
+			logging.warning(f'Could not find the following gensets: {list(set(instances) - set(self._gensets.keys()))}, they will be ignored')
+
+		if self._rotate:
+			last_rotated = self._settings['gensetsrotate']
+			if last_rotated is not None and last_rotated in self._gensets:
+				self._dbusservice['/MultipleGensets/LastRotated'] = last_rotated
+			else:
+				# Last rotated genset instance stored in settings is not found. Reset the rotation.
+				self._dbusservice['/MultipleGensets/LastRotated'] = None
+				self._settings['gensetsrotate'] = 0
+			self._rotation_order = tuple(sorted(self._gensets.keys()))
+			logging.info(f'Rotation between gensets enabled, rotation order: {self._rotation_order}')
+
+		if len(self._gensets) > 0:
+			# Order gensets by device instance
+			self._gensets = dict(sorted(self._gensets.items()))
+			self._dbusservice['/Enabled'] = 1
+		else:
+			self._dbusservice['/Enabled'] = 0
+
+		logging.info(f'Enabled gensets: {list(self._gensets.keys())} with rotation: {self._rotate}')
+
+	def _check_if_running(self, status_code = None):
+		if any(self._gensets[g].status_code in range(1, 10) for g in self._gensets):
+			super()._generator_started()
+		else:
+			super()._generator_stopped()
+
+	def dbus_value_changed(self, dbusServiceName, dbusPath, options, changes, deviceInstance):
+		if self._dbusservice is None:
+			return
+
+		if dbusServiceName not in self._genset_services.values():
+			return
+
+		if '/DeviceInstance' in dbusPath and dbusServiceName in self._genset_services.values():
+			logging.info(f'Genset service {dbusServiceName} has changed device instance to {changes["Value"]}, updating genset services list')
+			self._genset_services[changes['Value']] = dbusServiceName
+			self._check_enable_conditions()
+
+		super().dbus_value_changed(dbusServiceName, dbusPath, options, changes, deviceInstance)
+
+	def _check_remote_status(self):
+		error = self.get_error()
+		remotestart = any(self._gensets[g].remote_start_enabled for g in self._gensets)
+		# Check for genset error, also accept absence of the error path as valid no-error condition
+
+		# Only when all gensets report an error, the overall status is error
+		genset_error = all(self._gensets[g].error for g in self._gensets)
+		if genset_error:
+			self.set_error(Errors.REMOTEINFAULT)
+		elif error == Errors.REMOTEINFAULT:
+			self.clear_error()
+
+		if not remotestart and error == Errors.NONE:
+			self.set_error(Errors.REMOTEDISABLED)
+		elif remotestart and error == Errors.REMOTEDISABLED:
+			self.clear_error()
+
+	def _get_remote_switch_state(self):
+		# Do not drive the remote switch in case of error
+		# because Fischer Panda genset will clear the error when switched off
+		if self.get_error() in [Errors.REMOTEDISABLED, Errors.REMOTEINFAULT]:
+			return 0
+		if (not self._dbusservice['/Enabled']):
+			return 0
+		return any(self._gensets[g].start for g in self._gensets)
+
+	def _set_remote_switch_state(self, value):
+		error = self.get_error()
+		# Do not drive the remote switch in case of error
+		# because the generator clears the error when switched off
+		if error in [Errors.REMOTEDISABLED, Errors.REMOTEINFAULT]:
+			return
+		self._start_genset(value)
+
+		super()._generator_started() if value else super()._generator_stopped()
+
+	def genset_added(self, dbusservicename, instance):
+		if dbusservicename.startswith('com.victronenergy.dcgenset'):
+			logging.info(f'New DC genset service {dbusservicename} detected with instance {instance}, adding to genset service list')
+			self._genset_services[instance] = dbusservicename
+			self._remote_setup()
+
+	def genset_removed(self, dbusservicename):
+		logging.info(f'DC genset service {dbusservicename}, removing from genset service list')
+		if dbusservicename.startswith('com.victronenergy.dcgenset'):
+			for i, s in self._genset_services.items():
+				if s == dbusservicename:
+					del self._genset_services[i]
+					break
+			if len(self._genset_services) == 1:
+				self._downgrade_to_single_genset()
+				return
+		self._remote_setup()
+
+	def _downgrade_to_single_genset(self):
+		# Downgrade to DCGenset class if only one genset remains
+		logging.info(f'Downgrading to single DC genset control since only one genset remains')
+		self.__class__ = DcGenset
+
+		# Clear multiple gensets paths
+		self._dbusservice['/MultipleGensets/GensetsDetected'] = None
+		self._dbusservice['/MultipleGensets/GensetsEnabled'] = None
+		self._dbusservice['/MultipleGensets/LastRotated'] = None
+		self._remote_setup()
