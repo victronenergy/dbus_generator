@@ -271,6 +271,16 @@ class DcGensets(DcGenset):
 	_gensets = {}
 	_genset_services = {}
 	_rotate = False
+	_dc_genset_total_current = 0
+
+	# Used by _detect_generator_at_input to determine if a generator is detected at the input of the DC genset(s)
+	# For multiple gensets, the alarm must be triggered when either of the gensets does not provide sufficient current,
+	# so return the lowest current among the gensets to determine if a generator is detected at the input
+	@property
+	def dc_genset_current(self):
+		# Filter out None values. If a genset does not report current, it is considered connected anyways.
+		currents = [g.current for g in self._gensets.values() if g.status_code == 8 and g.current is not None]
+		return min(currents) if len(currents) > 0 else 0
 
 	def _start_genset(self, value):
 		if not self._gensets or value is None:
@@ -465,6 +475,9 @@ class DcGensets(DcGenset):
 		# because the generator clears the error when switched off
 		if error in [Errors.REMOTEDISABLED, Errors.REMOTEINFAULT]:
 			return
+
+		self._reset_power_input_timer()
+		self._connected = False
 		self._start_genset(value)
 
 		super()._generator_started() if value else super()._generator_stopped()
