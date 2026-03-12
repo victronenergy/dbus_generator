@@ -193,10 +193,6 @@ class DcGenset(Genset):
 				self._dbusservice['/State'] in [States.STOPPED, States.COOLDOWN, States.WARMUP]:
 			return
 
-		current = self.dc_genset_current
-		if current is None:
-			return
-
 		if self.connected:
 			if self._power_input_timer['unabletostart']:
 				self.log_info('Generator detected at DC, alarm removed')
