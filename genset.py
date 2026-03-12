@@ -23,6 +23,7 @@ monitoring = {
 		'/StatusCode': dummy
 		},
 	'com.victronenergy.dcgenset': {
+		'/Dc/0/Voltage': dummy,
 		'/Dc/0/Current': dummy,
 		'/RemoteStartModeEnabled': dummy,
 		'/Connected': dummy,
@@ -230,6 +231,9 @@ class DcGenset(Genset):
 				self._dbusservice.add_path('/MultipleGensets/GensetsDetected', "", writeable=False)	# JSON list of genset services with their device instance and product id, e.g. [{"service": "com.victronenergy.dcgenset_1", "instance": 1}, {...}]
 				self._dbusservice.add_path('/MultipleGensets/GensetsEnabled', "", writeable=True, onchangecallback=self._handle_changed_value)	# Proxy path to /GensetsEnabled setting
 				self._dbusservice.add_path('/MultipleGensets/LastRotated', None, writeable=False)		# Proxy path to /LastRotated setting
+				self._dbusservice.add_path('/MultipleGensets/Voltage', 0, writeable=False)
+				self._dbusservice.add_path('/MultipleGensets/Current', 0, writeable=False)
+				self._dbusservice.add_path('/MultipleGensets/Power', 0, writeable=False)
 
 			self._remote_setup(gensets)
 
@@ -237,6 +241,14 @@ class GensetService():
 	def __init__(self, _dbusmonitor, service_name):
 		self._dbusmonitor = _dbusmonitor
 		self.service_name = service_name
+
+	@property
+	def voltage(self):
+		return self._dbusmonitor.get_value(self.service_name, '/Dc/0/Voltage')
+
+	@property
+	def current(self):
+		return self._dbusmonitor.get_value(self.service_name, '/Dc/0/Current')
 
 	@property
 	def start(self):
@@ -340,6 +352,7 @@ class DcGensets(DcGenset):
 
 		self.enable()
 		self._check_enable_conditions()
+		self._update_genset_aggregated_values()
 
 	def _check_enable_conditions(self, relaysetting = None):
 		# We don't do anything with the relay, but need the arg to remain compatible with the parent method signature
@@ -396,6 +409,17 @@ class DcGensets(DcGenset):
 		else:
 			super()._generator_stopped()
 
+	def _update_genset_aggregated_values(self):
+		gensets = [g for g in self._gensets.values() if g.status_code == 8]
+		# Update total power/voltage/current for all gensets
+		voltages = [g.voltage for g in gensets if g.voltage is not None]
+		currents = [g.current for g in gensets if g.current is not None]
+		voltage = sum(voltages)/len(voltages) if len(voltages) > 0 else 0
+		current = sum(currents)
+		self._dbusservice['/MultipleGensets/Voltage'] = voltage
+		self._dbusservice['/MultipleGensets/Current'] = current
+		self._dbusservice['/MultipleGensets/Power'] = voltage * current
+
 	def dbus_value_changed(self, dbusServiceName, dbusPath, options, changes, deviceInstance):
 		if self._dbusservice is None:
 			return
@@ -407,6 +431,9 @@ class DcGensets(DcGenset):
 			logging.info(f'Genset service {dbusServiceName} has changed device instance to {changes["Value"]}, updating genset services list')
 			self._genset_services[changes['Value']] = dbusServiceName
 			self._check_enable_conditions()
+
+		if any(x in dbusPath for x in ['/Dc/0/Voltage', '/Dc/0/Current', '/Dc/0/Power']):
+			self._update_genset_aggregated_values()
 
 		super().dbus_value_changed(dbusServiceName, dbusPath, options, changes, deviceInstance)
 
@@ -473,4 +500,7 @@ class DcGensets(DcGenset):
 		self._dbusservice['/MultipleGensets/GensetsDetected'] = None
 		self._dbusservice['/MultipleGensets/GensetsEnabled'] = None
 		self._dbusservice['/MultipleGensets/LastRotated'] = None
+		self._dbusservice['/MultipleGensets/Voltage'] = None
+		self._dbusservice['/MultipleGensets/Current'] = None
+		self._dbusservice['/MultipleGensets/Power'] = None
 		self._remote_setup()
