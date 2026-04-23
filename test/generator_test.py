@@ -783,6 +783,31 @@ class TestGenerator(TestGeneratorBase):
 			'/Alarms/RemoteStartModeDisabled': 0
 		})
 
+	def test_remote_start_disabled_is_not_overwritten_by_remote_fault(self):
+		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/RemoteStartModeEnabled', 0)
+		self._monitor.set_value('com.victronenergy.genset.socketcan_can1_di0_uc0', '/Error/0/Id', "e-17")
+		self._update_values()
+		self._check_values(1, {
+			'/State': States.ERROR,
+			'/Error': Errors.REMOTEDISABLED,
+		})
+
+	def test_digital_input_errors_are_not_overwritten_by_remote_start_disabled(self):
+		self._add_digital_input('com.victronenergy.digitalinput.input_1', 1, 12, 12)
+		self._update_values()
+		self._remove_device('com.victronenergy.digitalinput.input_1')
+		self._monitor.set_value(self._services[1]['/GensetService'], '/RemoteStartModeEnabled', 0)
+		self._update_values()
+		self._check_values(1, {
+			'/Error': Errors.DIGITALINPUTNOTFOUND,
+		})
+
+		self._add_digital_input('com.victronenergy.digitalinput.input_1', 1, 12, 13)
+		self._update_values()
+		self._check_values(1, {
+			'/Error': Errors.DIGITALINPUTINHIBITDISABLED,
+		})
+
 	def test_digital_input_control_disabled_is_ignored_when_input_not_configured(self):
 		self._update_values()
 		self._check_values(1, {

@@ -78,15 +78,18 @@ class Genset(StartStop):
 	def _check_remote_status(self):
 		error = self._dbusservice['/Error']
 		remotestart = bool(self._dbusmonitor.get_value(self._remoteservice, '/RemoteStartModeEnabled'))
+
+		if remotestart == 0:
+			if error != Errors.REMOTEDISABLED:
+				self.set_error(Errors.REMOTEDISABLED)
+			return
+		elif error == Errors.REMOTEDISABLED:
+			self.clear_error()
+
 		# Check for genset error, also accept absence of the error path as valid no-error condition
 		if self._dbusmonitor.get_value(self._remoteservice, '/Error/0/Id'):
 			self.set_error(Errors.REMOTEINFAULT)
 		elif error == Errors.REMOTEINFAULT:
-			self.clear_error()
-
-		if remotestart == 0 and error == Errors.NONE:
-			self.set_error(Errors.REMOTEDISABLED)
-		elif remotestart == 1 and error == Errors.REMOTEDISABLED:
 			self.clear_error()
 
 	def _check_enable_conditions(self, relaysetting):
