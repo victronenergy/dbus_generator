@@ -322,6 +322,7 @@ class DcGensets(DcGenset):
 
 	def _handle_changed_value(self, path, value):
 		if path == '/MultipleGensets/GensetsEnabled':
+			value = str(value)
 			if value != '' and value != 'all' and value != 'rotate' and not all(v.isdigit() for v in value.split(',')):
 				return False
 			if value != 'rotate':
