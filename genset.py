@@ -322,7 +322,7 @@ class DcGensets(DcGenset):
 
 	def _handle_changed_value(self, path, value):
 		if path == '/MultipleGensets/GensetsEnabled':
-			if value != 'all' and value != 'rotate' and not all(v.isdigit() for v in value.split(',')):
+			if value != '' and value != 'all' and value != 'rotate' and not all(v.isdigit() for v in value.split(',')):
 				return False
 			if value != 'rotate':
 				self._dbusservice['/MultipleGensets/LastRotated'] = None
@@ -364,6 +364,11 @@ class DcGensets(DcGenset):
 		# We don't do anything with the relay, but need the arg to remain compatible with the parent method signature
 		self._gensets = {}
 		gensets_enabled = self._settings['gensetsenabled']
+
+		# No gensets enabled, do nothing
+		if gensets_enabled == '':
+			return
+
 		logging.info(f'Checking enable conditions for DC gensets, enabled gensets: {gensets_enabled}')
 		need_all = gensets_enabled == 'all' or gensets_enabled == 'rotate'
 		self._rotate = (gensets_enabled == 'rotate')
