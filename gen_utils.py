@@ -19,13 +19,16 @@ def enum(**kw):
 
 
 class Errors(object):
-	NONE, REMOTEDISABLED, REMOTEINFAULT = range(3)
+	NONE, REMOTEDISABLED, REMOTEINFAULT, RESERVED3, DIGITALINPUTINHIBITDISABLED, DIGITALINPUTNOTFOUND = range(6)
 	@staticmethod
 	def get_description(value):
 		description = [
 		'No error',
 		'Remote control disabled',
-		'Remote in fault condition']
+		'Remote in fault condition',
+		'Reserved',
+		'Digital input inhibit disabled',
+		'Digital input not found']
 		d = ''
 		try:
 			d = description[value]

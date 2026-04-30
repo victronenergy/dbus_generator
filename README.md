@@ -22,6 +22,24 @@ Available conditions:
 
 For more details of how it works and all available options, check the manual: http://www.victronenergy.com/live/ccgx:generator_start_stop
 
+### Digital Input Inhibit
+
+A `com.victronenergy.digitalinput.*` service configured with `/Type=12` is treated as a genset inhibit input. Discovery and removal are driven entirely by `device_added` and `device_removed` callbacks.
+
+**Operational model:**
+1. When a digital input service with `/Type=12` appears, inhibit tracking begins and the capability is persisted
+2. `/State=12` means the generator may run; `/State=13` means the generator is inhibited
+3. When the service disappears or its type changes away from `12`, the service is removed and re-added by `dbus-digitalinputs` — `device_removed` fires and Error #5 is set until a replacement is found via `device_added`
+4. Writing `0` to `/DigitalInput/InhibitSet` clears inhibit tracking entirely
+
+`/DigitalInput/InhibitActive` reflects the current inhibit state: `None` when no type-12 input is being followed, `0` when the followed input is at `/State=12` (run allowed), and `1` when the followed input is at `/State=13` (inhibited).
+
+**Error semantics:**
+- **Error #4 — Digital input inhibit disabled**: A type-12 input is being followed and its `/State` is `13` (inhibited)
+- **Error #5 — Digital input not found**: A type-12 input was previously seen but is not currently available
+
+The "previously seen" state is persisted in `/Settings/Generator{N}/DigitalInputInhibitSeen`. On restart, if this setting is `1` but no type-12 digital input service is present, Error #5 is set immediately to prevent the generator starting.
+
 ### Future improvements and additions
 - Make it possible configure how to start/stop the genset (relay on BMV, relay on CCGX, relay on ??). Note that this requires work on vedirect-dbus as well, currently it is not possible for the CCGX to control the relay in a BMV.
 

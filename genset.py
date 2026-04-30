@@ -131,7 +131,7 @@ class Genset(StartStop):
 	def _get_remote_switch_state(self):
 		# Do not drive the remote switch in case of error
 		# because Fischer Panda genset will clear the error when switched off
-		if self.get_error() in [Errors.REMOTEDISABLED, Errors.REMOTEINFAULT]:
+		if self.get_error() in [Errors.REMOTEDISABLED, Errors.REMOTEINFAULT, Errors.DIGITALINPUTINHIBITDISABLED]:
 			return 0
 		if (not self._dbusservice['/Enabled']):
 			return 0
@@ -144,7 +144,7 @@ class Genset(StartStop):
 		error = self._dbusservice['/Error']
 		# Do not drive the remote switch in case of error
 		# because the generator clears the error when switched off
-		if error in [Errors.REMOTEDISABLED, Errors.REMOTEINFAULT]:
+		if error in [Errors.REMOTEDISABLED, Errors.REMOTEINFAULT, Errors.DIGITALINPUTINHIBITDISABLED]:
 			return
 		self._dbusmonitor.set_value_async(self._remoteservice, '/Start', value)
 

@@ -38,6 +38,10 @@ class Generator(object):
 				'/Settings/SystemSetup/AcInput2': dummy,
 				'/Settings/Relay/Polarity': dummy
 				},
+			'com.victronenergy.digitalinput': {
+				'/State': dummy,
+				'/Type': dummy
+				},
 			'com.victronenergy.battery': {
 				'/Dc/0/Voltage': dummy,
 				'/Dc/0/Current': dummy,
@@ -184,7 +188,10 @@ class Generator(object):
 			# Warm-up and Cool-down
 			'warmuptime': ['/Settings/{0}/WarmUpTime', 0, 0, 1800],
 			'cooldowntime': ['/Settings/{0}/CoolDownTime', 0, 0, 600],
-			'generatorstoptime': ['/Settings/{0}/GeneratorStopTime', 0, 0, 600]
+			'generatorstoptime': ['/Settings/{0}/GeneratorStopTime', 0, 0, 600],
+			# Internal cache so startup can preserve the "inhibit input expected" state
+			# even when dbus-digitalinputs is temporarily unavailable.
+			'digitalinputinhibitseen': ['/Settings/{0}/DigitalInputInhibitSeen', 0, 0, 1, True]
 			}
 
 		settings = {}

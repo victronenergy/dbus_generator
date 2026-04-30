@@ -80,6 +80,14 @@ class TestGeneratorBase(unittest.TestCase):
 	def _remove_device(self, service):
 		self._monitor.remove_service(service)
 
+	def _add_digital_input(self, service, instance, device_type, state):
+		self._add_device(service,
+			instance=instance,
+			values={
+				'/Type': device_type,
+				'/State': state,
+			})
+
 	def _set_setting(self, path, value):
 		self._generator_._settings[self._generator_._settings.get_short_name(path)] = value
 
@@ -773,6 +781,207 @@ class TestGenerator(TestGeneratorBase):
 			'/Error': Errors.NONE,
 			'/Alarms/AutoStartDisabled': 0,
 			'/Alarms/RemoteStartModeDisabled': 0
+		})
+
+	def test_digital_input_control_disabled_is_ignored_when_input_not_configured(self):
+		self._update_values()
+		self._check_values(1, {
+			'/DigitalInput/InhibitActive': None,
+		})
+
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
+		self._set_setting('/Settings/Generator1/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/StartValue', 1650)
+		self._set_setting('/Settings/Generator1/AcLoad/StopValue', 800)
+		self._set_setting('/Settings/Generator1/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/Generator1/AcLoad/StopTimer', 0)
+
+		self._update_values()
+		self._check_values(1, {
+			'/State': States.RUNNING,
+			'/Error': Errors.NONE,
+		})
+
+	def test_digital_input_control_disabled_stops_and_locks_when_input_configured(self):
+		self._add_digital_input('com.victronenergy.digitalinput.input_1', 1, 12, 12)
+
+		self._update_values()
+		self._check_values(1, {
+			'/DigitalInput/InhibitActive': 0,
+		})
+
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
+		self._set_setting('/Settings/Generator1/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/StartValue', 1650)
+		self._set_setting('/Settings/Generator1/AcLoad/StopValue', 800)
+		self._set_setting('/Settings/Generator1/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/Generator1/AcLoad/StopTimer', 0)
+
+		self._update_values()
+		self._check_values(1, {
+			'/State': States.RUNNING,
+			'/Error': Errors.NONE,
+		})
+
+		self._monitor.set_value('com.victronenergy.digitalinput.input_1', '/State', 13)
+		self._update_values()
+		self._check_values(1, {
+			'/State': States.ERROR,
+			'/Error': Errors.DIGITALINPUTINHIBITDISABLED,
+			'/DigitalInput/InhibitActive': 1,
+		})
+
+		self._monitor.set_value('com.victronenergy.digitalinput.input_1', '/State', 12)
+		self._update_values()
+		self._check_values(1, {
+			'/Error': Errors.NONE,
+			'/DigitalInput/InhibitActive': 0,
+		})
+
+	def test_digital_input_not_found_sets_error_5_after_capability_seen(self):
+		self._add_digital_input('com.victronenergy.digitalinput.input_1', 1, 12, 12)
+		self._update_values()
+		self._check_values(1, {
+			'/DigitalInput/InhibitSet': 1,
+			'/DigitalInput/InhibitActive': 0,
+		})
+		self._remove_device('com.victronenergy.digitalinput.input_1')
+		self._update_values()
+		self._check_values(1, {
+			'/DigitalInput/InhibitSet': 1,
+			'/DigitalInput/InhibitActive': None,
+			'/Error': Errors.DIGITALINPUTNOTFOUND,
+		})
+
+	def test_digital_input_not_found_sets_error_5_from_persistent_cache_on_startup(self):
+		self._set_setting('/Settings/Generator1/DigitalInputInhibitSeen', 1)
+		self._update_values()
+		self._check_values(1, {
+			'/State': States.ERROR,
+			'/Error': Errors.DIGITALINPUTNOTFOUND,
+		})
+
+	def test_digital_input_subscription_moves_to_new_type_12_pin(self):
+		instance = next(i for i in self._generator_._instances.values() if i._instance == 1)
+		self._add_digital_input('com.victronenergy.digitalinput.input_1', 1, 12, 12)
+		self._add_digital_input('com.victronenergy.digitalinput.input_2', 2, 0, 12)
+		self._update_values()
+		self._check_values(1, {
+			'/DigitalInput/InhibitSet': 1,
+		})
+		self._remove_device('com.victronenergy.digitalinput.input_1')
+		self._update_values()
+		self._check_values(1, {
+			'/DigitalInput/InhibitSet': 1,
+			'/Error': Errors.DIGITALINPUTNOTFOUND,
+		})
+		self.assertEqual(instance._settings['digitalinputinhibitseen'], 1)
+
+	def test_digital_input_inhibit_set_writeable_and_persisted(self):
+		instance = next(i for i in self._generator_._instances.values() if i._instance == 1)
+		self._update_values()
+		self._services[1].set_value('/DigitalInput/InhibitSet', 0)
+		self._check_values(1, {
+			'/DigitalInput/InhibitSet': 0,
+		})
+		self.assertEqual(instance._settings['digitalinputinhibitseen'], 0)
+
+	def test_named_digital_input_pin_is_supported(self):
+		instance = next(i for i in self._generator_._instances.values() if i._instance == 1)
+		self._add_digital_input(
+			'com.victronenergy.digitalinput.HQ2534G943K_input_1', 1, 12, 12)
+		self._update_values()
+		self._check_values(1, {
+			'/Error': Errors.NONE,
+		})
+		self.assertEqual(instance._settings['digitalinputinhibitseen'], 1)
+
+	def test_setting_reset_to_zero_rechecks_actual_inhibit_configuration(self):
+		instance = next(i for i in self._generator_._instances.values() if i._instance == 1)
+		self._add_digital_input('com.victronenergy.digitalinput.input_1', 1, 12, 12)
+		self._update_values()
+		self.assertEqual(instance._settings['digitalinputinhibitseen'], 1)
+
+		self._set_setting('/Settings/Generator1/DigitalInputInhibitSeen', 0)
+		self._update_values()
+		self.assertEqual(instance._settings['digitalinputinhibitseen'], 1)
+		self._check_values(1, {
+			'/Error': Errors.NONE,
+		})
+
+	def test_start_is_blocked_when_inhibit_capability_disappears(self):
+		self._add_digital_input('com.victronenergy.digitalinput.input_1', 1, 12, 12)
+		self._update_values()
+		self._remove_device('com.victronenergy.digitalinput.input_1')
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
+		self._set_setting('/Settings/Generator1/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/StartValue', 1650)
+		self._set_setting('/Settings/Generator1/AcLoad/StopValue', 800)
+		self._set_setting('/Settings/Generator1/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/Generator1/AcLoad/StopTimer', 0)
+
+		self._update_values()
+		self._check_values(1, {
+			'/State': States.ERROR,
+			'/Error': Errors.DIGITALINPUTNOTFOUND,
+		})
+
+	def test_start_allows_start_when_digital_input_control_enabled(self):
+		self._add_digital_input('com.victronenergy.digitalinput.input_1', 1, 12, 12)
+
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
+		self._set_setting('/Settings/Generator1/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/StartValue', 1650)
+		self._set_setting('/Settings/Generator1/AcLoad/StopValue', 800)
+		self._set_setting('/Settings/Generator1/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/Generator1/AcLoad/StopTimer', 0)
+
+		self._update_values()
+		self._check_values(1, {
+			'/State': States.RUNNING,
+			'/Error': Errors.NONE,
+		})
+
+	def test_running_generator_stops_when_digital_input_service_disappears(self):
+		self._add_digital_input('com.victronenergy.digitalinput.input_1', 1, 12, 12)
+
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L1/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L2/P', 700)
+		self._monitor.set_value('com.victronenergy.vebus.ttyO1', '/Ac/Out/L3/P', 700)
+		self._set_setting('/Settings/Generator1/AutoStartEnabled', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/Enabled', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/Measurement', 1)
+		self._set_setting('/Settings/Generator1/AcLoad/StartValue', 1650)
+		self._set_setting('/Settings/Generator1/AcLoad/StopValue', 800)
+		self._set_setting('/Settings/Generator1/AcLoad/StartTimer', 0)
+		self._set_setting('/Settings/Generator1/AcLoad/StopTimer', 0)
+		self._update_values()
+		self._check_values(1, {
+			'/State': States.RUNNING,
+			'/Error': Errors.NONE,
+		})
+
+		self._remove_device('com.victronenergy.digitalinput.input_1')
+		self._update_values()
+		self._check_values(1, {
+			'/State': States.ERROR,
+			'/Error': Errors.DIGITALINPUTNOTFOUND,
 		})
 
 	def test_overload_alarm_vebus(self):

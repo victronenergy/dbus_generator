@@ -49,6 +49,10 @@ SYSTEM_SERVICE = 'com.victronenergy.system'
 BATTERY_PREFIX = '/Dc/Battery'
 HISTORY_DAYS = 30
 AUTOSTART_DISABLED_ALARM_TIME = 600
+DIGITALINPUT_SERVICE_CLASS = 'com.victronenergy.digitalinput.'
+DIGITALINPUT_INHIBIT_TYPE = 12
+DIGITALINPUT_STATE_ALLOWED = 12
+DIGITALINPUT_STATE_INHIBITED = 13
 
 def safe_max(args):
 	try:
@@ -328,6 +332,7 @@ class StartStop(object):
 		self._vebusservice = None
 		self._acsystemservice = None
 		self._errorstate = 0
+		self._last_error = Errors.NONE
 		self._battery_service = None
 		self._battery_prefix = None
 
@@ -335,6 +340,9 @@ class StartStop(object):
 			'timeout': 0,
 			'unabletostart': False
 			}
+		self._digitalinput_inhibit_service = None
+		self._digitalinput_inhibit_active = False
+		self._digitalinput_inhibit_state = None
 
 		# Order is important. Conditions are evaluated in the order listed.
 		self._condition_stack = OrderedDict({
@@ -432,6 +440,9 @@ class StartStop(object):
 			value=self._dbusmonitor.get_value(self._remoteservice, '/DeviceInstance'))
 		self._dbusservice.add_path('/GensetProductId',
 			value=self._dbusmonitor.get_value(self._remoteservice, '/ProductId'))
+		self._dbusservice.add_path('/DigitalInput/InhibitSet', value=None, writeable=True,
+			onchangecallback=self._set_digitalinput_inhibit_set)
+		self._dbusservice.add_path('/DigitalInput/InhibitActive', value=None)
 		self._dbusservice.add_path('/DigitalInput/Running', value=None, writeable=True, onchangecallback=self._running_by_digital_input)
 		self._dbusservice.add_path('/DigitalInput/Input', value=None, writeable=True, onchangecallback=self._running_by_digital_input)
 		self._dbusservice.add_path('/TankService', value=None, writeable=True)
@@ -464,8 +475,13 @@ class StartStop(object):
 		self._dbusservice['/ServiceInterval'] = int(self._settings['serviceinterval'])
 		self._dbusservice['/ServiceCounter'] = None
 		self._dbusservice['/ServiceCounterReset'] = 0
+		self._dbusservice['/DigitalInput/InhibitSet'] = 0
+		self._dbusservice['/DigitalInput/InhibitActive'] = None
 		self._dbusservice['/DigitalInput/Running'] = 0
 		self._dbusservice['/DigitalInput/Input'] = 0
+		if self._settings['digitalinputinhibitseen']:
+			self._update_digitalinput_inhibit_set(1)
+			self.set_error(Errors.DIGITALINPUTNOTFOUND)
 
 		# When this startstop instance controls a genset which reports operatinghours, make sure to synchronize with that.
 		self._useGensetHours = self._dbusmonitor.get_value(self._remoteservice, '/Engine/OperatingHours', None) is not None
@@ -487,6 +503,58 @@ class StartStop(object):
 			self._settings['autostart'] = int(value)
 			return True
 		return False
+
+	def _rescan_digitalinput_inhibit(self):
+		for service in self._dbusmonitor.get_service_list(classfilter='com.victronenergy.digitalinput'):
+			if self._dbusmonitor.get_value(service, '/Type') == DIGITALINPUT_INHIBIT_TYPE:
+				self._on_digitalinput_inhibit_added(service)
+				break
+
+	def _on_digitalinput_inhibit_added(self, service_name):
+		self.log_info('Following inhibit state from %s.' % service_name)
+		self._digitalinput_inhibit_service = service_name
+		self._update_digitalinput_inhibit_set(1)
+		self._apply_digitalinput_state(service_name)
+
+	def _on_digitalinput_inhibit_removed(self, service_name):
+		self.log_info('Inhibit service %s removed.' % service_name)
+		self._digitalinput_inhibit_service = None
+		self._digitalinput_inhibit_active = False
+		self._digitalinput_inhibit_state = None
+		self._dbusservice['/DigitalInput/InhibitActive'] = None
+		self.set_error(Errors.DIGITALINPUTNOTFOUND)
+		if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP, States.COOLDOWN, States.STOPPING) \
+				or self._get_remote_switch_state():
+			self._set_remote_switch_state(dbus.Int32(0, variant_level=1))
+
+	def _set_digitalinput_inhibit_set(self, path, value):
+		try:
+			set_value = int(value)
+		except (TypeError, ValueError):
+			return False
+		if set_value not in (0, 1):
+			return False
+		self._update_digitalinput_inhibit_set(set_value)
+		return True
+
+	def _update_digitalinput_inhibit_set(self, set_value):
+		if self._dbusservice is None or set_value not in (0, 1):
+			return
+
+		if set_value == 1:
+			if self._dbusservice['/DigitalInput/InhibitSet'] != 1:
+				self._dbusservice['/DigitalInput/InhibitSet'] = 1
+				self._settings['digitalinputinhibitseen'] = 1
+		else:
+			if self._dbusservice['/DigitalInput/InhibitSet'] != 0:
+				self._dbusservice['/DigitalInput/InhibitSet'] = 0
+				self._settings['digitalinputinhibitseen'] = 0
+				self._digitalinput_inhibit_service = None
+				self._digitalinput_inhibit_active = False
+				self._digitalinput_inhibit_state = None
+				self._dbusservice['/DigitalInput/InhibitActive'] = None
+				if self.get_error() in (Errors.DIGITALINPUTNOTFOUND, Errors.DIGITALINPUTINHIBITDISABLED):
+					self.clear_error(force=True)
 
 	def _set_manual_start(self, path, value):
 		# Manual start when generator is stopped by tank level condition is not allowed
@@ -525,20 +593,39 @@ class StartStop(object):
 	def device_added(self, dbusservicename, instance):
 		if dbusservicename.startswith('com.victronenergy.tank'):
 			self._gettankservices()
+
+		if dbusservicename.startswith(DIGITALINPUT_SERVICE_CLASS) and \
+				self._digitalinput_inhibit_service is None and \
+				self._dbusmonitor.get_value(dbusservicename, '/Type') == DIGITALINPUT_INHIBIT_TYPE:
+			self._on_digitalinput_inhibit_added(dbusservicename)
+
 		self._determineservices()
 
 	def device_removed(self, dbusservicename, instance):
 		if dbusservicename.startswith('com.victronenergy.tank'):
 			self._gettankservices()
+
+		if dbusservicename == self._digitalinput_inhibit_service:
+			self._on_digitalinput_inhibit_removed(dbusservicename)
+
 		self._determineservices()
 
 	def get_error(self):
 		return self._dbusservice['/Error']
 
-	def set_error(self, errorn):
+	def _is_digitalinput_inhibit_error(self, errorn):
+		return errorn in (Errors.DIGITALINPUTINHIBITDISABLED, Errors.DIGITALINPUTNOTFOUND)
+
+	def set_error(self, errorn, force=False):
+		current_error = self.get_error()
+		if not force and self._is_digitalinput_inhibit_error(current_error) \
+				and not self._is_digitalinput_inhibit_error(errorn):
+			return
 		self._dbusservice['/Error'] = errorn
 
-	def clear_error(self):
+	def clear_error(self, force=False):
+		if not force and self._is_digitalinput_inhibit_error(self.get_error()):
+			return
 		self._dbusservice['/Error'] = Errors.NONE
 
 	def dbus_value_changed(self, dbusServiceName, dbusPath, options, changes, deviceInstance):
@@ -560,6 +647,9 @@ class StartStop(object):
 			# Custom name changed, update the available tank services
 			self._gettankservices()
 
+		if dbusServiceName == self._digitalinput_inhibit_service and dbusPath == '/State':
+			self._apply_digitalinput_state(dbusServiceName)
+
 		if dbusServiceName != 'com.victronenergy.system':
 			return
 		if dbusPath == '/AutoSelectedBatteryMeasurement' and self._settings['batterymeasurement'] == 'default':
@@ -576,13 +666,22 @@ class StartStop(object):
 		self._dbusservice['/AvailableTankServices'] = json.dumps(ul)
 
 	def handlechangedsetting(self, setting, oldvalue, newvalue):
-		if self._dbusservice is None:
-			return
 		if self._name not in setting:
 			# Not our setting
 			return
 
 		s = self._settings.removeprefix(setting)
+
+		if s == 'digitalinputinhibitseen':
+			self._update_digitalinput_inhibit_set(newvalue)
+			if newvalue == 1 and self._digitalinput_inhibit_service is None:
+				self.set_error(Errors.DIGITALINPUTNOTFOUND)
+			elif newvalue == 0 and self._digitalinput_inhibit_service is None:
+				self._rescan_digitalinput_inhibit()
+			return
+
+		if self._dbusservice is None:
+			return
 
 		if s == 'batterymeasurement':
 			self._determineservices()
@@ -639,9 +738,32 @@ class StartStop(object):
 			self._dbusservice['/ServiceCounterReset'] = 0
 
 	def _evaluate_startstop_conditions(self):
+		digitalinput_inhibit_configured = self._digitalinput_inhibit_service is not None
+		digitalinput_inhibit_active = digitalinput_inhibit_configured and \
+			self._digitalinput_inhibit_active
+
+		if digitalinput_inhibit_active:
+			if self.get_error() != Errors.DIGITALINPUTINHIBITDISABLED:
+				# Handle startup/restore case where inhibit state is already active
+				# and no onchangecallback transition is triggered.
+				if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP, States.COOLDOWN, States.STOPPING) \
+						or self._get_remote_switch_state():
+					self._set_remote_switch_state(dbus.Int32(0, variant_level=1))
+				# Do not overwrite Error #5 (DIGITALINPUTNOTFOUND) with Error #4 (DIGITALINPUTINHIBITDISABLED).
+				# If the service hasn't been found yet, we want to preserve the "service missing" indication
+				# rather than claiming the input is disabled. The service may come online later and respond.
+				if self.get_error() != Errors.DIGITALINPUTNOTFOUND:
+					self.set_error(Errors.DIGITALINPUTINHIBITDISABLED)
+		elif self.get_error() == Errors.DIGITALINPUTINHIBITDISABLED:
+			self.clear_error(force=True)
+			# _errorstate=1 signals that an error was just cleared and should
+			# transition through the standard "error cleared" path once.
+			self._errorstate = 1
+
 		if self.get_error() != Errors.NONE:
 			# First evaluation after an error, log it
-			if self._errorstate == 0:
+			if self._errorstate == 0 or self._last_error != self.get_error():
+				self._last_error = self.get_error()
 				self._errorstate = 1
 				self._dbusservice['/State'] = States.ERROR
 				self.log_info('Error: #%i - %s, stop controlling remote.' %
@@ -650,8 +772,13 @@ class StartStop(object):
 		elif self._errorstate == 1:
 			# Error cleared
 			self._errorstate = 0
+			self._last_error = Errors.NONE
 			self._dbusservice['/State'] = States.STOPPED
 			self.log_info('Error state cleared, taking control of remote switch.')
+
+		if digitalinput_inhibit_active:
+			# DigitalInputInhibit active: do not evaluate or drive any start logic.
+			return
 
 		start = False
 		stop_by_tank = False
@@ -1325,6 +1452,36 @@ class StartStop(object):
 
 		self._dbusservice['/RunningByCondition'] = condition
 		self._dbusservice['/RunningByConditionCode'] = RunningConditions.lookup(condition)
+
+	def _apply_digitalinput_state(self, service_name):
+		state = self._dbusmonitor.get_value(service_name, '/State')
+		if state is None:
+			return False
+		if state == self._digitalinput_inhibit_state:
+			return True
+
+		if state == DIGITALINPUT_STATE_ALLOWED:
+			self._digitalinput_inhibit_state = state
+			self._digitalinput_inhibit_active = False
+			if self._dbusservice is not None:
+				self._dbusservice['/DigitalInput/InhibitActive'] = 0
+			if self.get_error() in (Errors.DIGITALINPUTINHIBITDISABLED, Errors.DIGITALINPUTNOTFOUND):
+				self.clear_error(force=True)
+				self._errorstate = 1
+			return True
+
+		if state == DIGITALINPUT_STATE_INHIBITED:
+			self._digitalinput_inhibit_state = state
+			self._digitalinput_inhibit_active = True
+			if self._dbusservice is not None:
+				self._dbusservice['/DigitalInput/InhibitActive'] = 1
+			if self._dbusservice['/State'] in (States.RUNNING, States.WARMUP, States.COOLDOWN, States.STOPPING) \
+					or self._get_remote_switch_state():
+				self._set_remote_switch_state(dbus.Int32(0, variant_level=1))
+			self.set_error(Errors.DIGITALINPUTINHIBITDISABLED)
+			return True
+
+		return False
 
 	def _stop_generator(self, stop_by_tank=False):
 		state = self._dbusservice['/State']
