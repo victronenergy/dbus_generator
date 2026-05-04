@@ -451,10 +451,17 @@ class DcGensets(DcGenset):
 
 	def _check_remote_status(self):
 		error = self.get_error()
-		remotestart = any(self._gensets[g].remote_start_enabled for g in self._gensets)
-		# Check for genset error, also accept absence of the error path as valid no-error condition
 
+		if len(self._gensets) == 0:
+			# No gensets enabled, set error
+			self.set_error(Errors.NO_GENSETS_ENABLED)
+			return
+		elif error == Errors.NO_GENSETS_ENABLED:
+			self.clear_error()
+
+		# Check for genset error, also accept absence of the error path as valid no-error condition
 		# Only when all gensets report an error, the overall status is error
+		remotestart = any(self._gensets[g].remote_start_enabled for g in self._gensets)
 		genset_error = all(self._gensets[g].error for g in self._gensets)
 		if genset_error:
 			self.set_error(Errors.REMOTEINFAULT)

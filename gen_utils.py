@@ -19,13 +19,15 @@ def enum(**kw):
 
 
 class Errors(object):
-	NONE, REMOTEDISABLED, REMOTEINFAULT = range(3)
+	NONE, REMOTEDISABLED, REMOTEINFAULT, NO_GENERATOR_DETECTED_AT_AC_INPUT, NO_GENSETS_ENABLED = range(5)
 	@staticmethod
 	def get_description(value):
 		description = [
 		'No error',
 		'Remote control disabled',
-		'Remote in fault condition']
+		'Remote in fault condition',
+		'No generator detected at AC input',
+		'No gensets enabled']
 		d = ''
 		try:
 			d = description[value]
