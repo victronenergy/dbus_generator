@@ -322,6 +322,10 @@ class DcGensets(DcGenset):
 
 	def _handle_changed_value(self, path, value):
 		if path == '/MultipleGensets/GensetsEnabled':
+			# Only allowed to change this when the gensets are not running and autostart is disabled.
+			state = self._dbusservice['/State']
+			if (state != States.STOPPED and state != States.ERROR) or self._dbusservice['/AutoStartEnabled'] == 1:
+				return False
 			value = str(value)
 			if value != '' and value != 'all' and value != 'rotate' and not all(v.isdigit() for v in value.split(',')):
 				return False
