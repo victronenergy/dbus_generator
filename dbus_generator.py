@@ -340,7 +340,18 @@ class Generator(object):
 			for i in self._instances:
 				if isinstance(self._instances[i], genset.DcGensets):
 					self._instances[i].genset_removed(servicename)
-					break
+
+					if servicename in self._instances:
+						# Reassign instance to the next genset item in the gensets list to make sure the instance is always tied to an existing genset service.
+						next_genset = next(iter(self._instances[servicename].genset_services))
+						next_genset_servicename = self._instances[servicename].genset_services[next_genset]
+						self._instances[next_genset_servicename] = self._instances[i]
+						# Update the remote service paths on dbus.
+						self._instances[next_genset_servicename].remoteservice = next_genset_servicename
+						del self._instances[i]
+
+					return # We can safely return here, since the instance must be removed from the list when there's only one genset left, and when that happens the instance is not of type DcGensets anymore.
+
 		if servicename in self._instances:
 			if self._instances[servicename] is not None:
 				genset_removed = isinstance(self._instances[servicename], genset.Genset)

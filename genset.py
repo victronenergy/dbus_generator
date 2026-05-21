@@ -282,6 +282,10 @@ class DcGensets(DcGenset):
 		currents = [g.current for g in self._gensets.values() if g.status_code == 8 and g.current is not None]
 		return min(currents) if len(currents) > 0 else 0
 
+	@property
+	def genset_services(self):
+		return self._genset_services
+
 	def _start_genset(self, value):
 		if not self._gensets or value is None:
 			return
@@ -426,6 +430,7 @@ class DcGensets(DcGenset):
 			super()._generator_stopped()
 
 	def _update_genset_aggregated_values(self):
+		# Aggregate values of the gensets that are running (status code 8)
 		gensets = [g for g in self._gensets.values() if g.status_code == 8]
 		# Update total power/voltage/current for all gensets
 		voltages = [g.voltage for g in gensets if g.voltage is not None]

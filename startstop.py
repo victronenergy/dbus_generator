@@ -353,6 +353,15 @@ class StartStop(object):
 	def remoteservice(self):
 		return self._remoteservice
 
+	# Allow updating the genset service without needing to restart the service.
+	@remoteservice.setter
+	def remoteservice(self, value):
+		self._remoteservice = value
+		self._dbusservice['/GensetService'] = value
+		self._dbusservice['/GensetServiceType'] = value.split('.')[2] if value is not None else None
+		self._dbusservice['/GensetInstance'] = self._dbusmonitor.get_value(value, '/DeviceInstance')
+		self._dbusservice['/GensetProductId'] = self._dbusmonitor.get_value(value, '/ProductId')
+
 	# Return the active vebusservice or the acsystemservice.
 	@property
 	def multiservice(self):
