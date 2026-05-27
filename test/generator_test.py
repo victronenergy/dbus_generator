@@ -1833,6 +1833,177 @@ class TestGenerator(TestGeneratorBase):
 			'/GensetInstance': 9
 		})
 
+	def test_multiple_dcgensets(self):
+		self._remove_device('com.victronenergy.genset.socketcan_can1_di0_uc0')
+
+		self._add_device('com.victronenergy.dcgenset.socketcan_can1_di1_uc1',
+			instance=11,
+			values={
+				'/Start': 0,
+				'/RemoteStartModeEnabled': 1,
+				'/Connected': 1,
+				'/ProductId': 0xC06D,
+				'/Error/0/Id': "",
+				'/StatusCode': 0,
+				'/Dc/0/Voltage': 0,
+				'/Dc/0/Current': 0,
+				'/StatusCode': 0
+			})
+
+		sleep(1)
+		self.update_services()
+		self._update_values()
+		self._check_values(1, {
+			'/GensetInstance': 11
+		})
+
+		self._add_device('com.victronenergy.dcgenset.socketcan_can1_di1_uc2',
+			instance=10,
+			values={
+				'/Start': 0,
+				'/RemoteStartModeEnabled': 1,
+				'/Connected': 1,
+				'/ProductId': 0xC06D,
+				'/Error/0/Id': "",
+				'/StatusCode': 0,
+				'/Dc/0/Voltage': 0,
+				'/Dc/0/Current': 0,
+				'/StatusCode': 0
+			})
+
+		sleep(1)
+		self.update_services()
+		self._update_values()
+		self._check_values(1, {
+			'/GensetInstance': 11,
+			'/MultipleGensets/Power': 0,
+			'/MultipleGensets/Current': 0,
+			'/MultipleGensets/Voltage': 0,
+			'/MultipleGensets/GensetsDetected': [{'instance': 11,'service': 'com.victronenergy.dcgenset.socketcan_can1_di1_uc1'}, {'instance': 10, 'service': 'com.victronenergy.dcgenset.socketcan_can1_di1_uc2'}]
+		})
+
+		self._services['/MultipleGensets/GensetsEnabled'] = "all"
+		self._services[1]['/ManualStart'] = 1
+		self._update_values()
+		self._check_values(1, {
+			'/State': States.RUNNING
+		})
+
+		self.assertEqual(self._monitor.get_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc1',
+			'/Start'), 1)
+
+		self.assertEqual(self._monitor.get_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc2',
+			'/Start'), 1)
+
+		self._monitor.set_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc1', '/StatusCode', 8)
+		self._monitor.set_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc1', '/Dc/0/Voltage', 24)
+		self._monitor.set_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc1', '/Dc/0/Current', 10)
+		self._monitor.set_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc2', '/StatusCode', 8)
+		self._monitor.set_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc2', '/Dc/0/Voltage', 24)
+		self._monitor.set_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc2', '/Dc/0/Current', 10)
+
+		sleep(1)
+		self._update_values()
+		self._check_values(1, {
+			'/MultipleGensets/Power': 480,
+			'/MultipleGensets/Current': 20,
+			'/MultipleGensets/Voltage': 24,
+		})
+
+	def test_multiple_dcgensets_rotate(self):
+		self._remove_device('com.victronenergy.genset.socketcan_can1_di0_uc0')
+
+		self._add_device('com.victronenergy.dcgenset.socketcan_can1_di1_uc1',
+			instance=11,
+			values={
+				'/Start': 0,
+				'/RemoteStartModeEnabled': 1,
+				'/Connected': 1,
+				'/ProductId': 0xC06D,
+				'/Error/0/Id': "",
+				'/StatusCode': 0,
+				'/Dc/0/Voltage': 0,
+				'/Dc/0/Current': 0,
+				'/StatusCode': 0
+			})
+
+		sleep(1)
+		self.update_services()
+		self._update_values()
+		self._check_values(1, {
+			'/GensetInstance': 11
+		})
+
+		self._add_device('com.victronenergy.dcgenset.socketcan_can1_di1_uc2',
+			instance=10,
+			values={
+				'/Start': 0,
+				'/RemoteStartModeEnabled': 1,
+				'/Connected': 1,
+				'/ProductId': 0xC06D,
+				'/Error/0/Id': "",
+				'/StatusCode': 0,
+				'/Dc/0/Voltage': 0,
+				'/Dc/0/Current': 0,
+				'/StatusCode': 0
+			})
+
+		self._services[1]['/MultipleGensets/GensetsEnabled'] = 'rotate'
+		self._set_setting('/Settings/Generator1/MultipleGensets/GensetsEnabled', 'rotate')
+		self._set_setting('/Settings/Generator1/MultipleGensets/LastRotated', 11)
+		self._services[1]['/AutoStartEnabled'] = 0
+		self._services[1]['/ManualStart'] = 1
+		self._update_values()
+
+		self._check_values(1, {
+			'/State': States.RUNNING,
+			'/MultipleGensets/GensetsEnabled': 'rotate',
+		})
+
+		self.assertEqual(self._monitor.get_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc1',
+			'/Start'), 0)
+
+		self.assertEqual(self._monitor.get_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc2',
+			'/Start'), 1)
+
+		self._services[1]['/ManualStart'] = 0
+		self._update_values()
+		self._check_values(1, {
+			'/State': States.STOPPED,
+			'/MultipleGensets/LastRotated': 10
+		})
+
+		self.assertEqual(self._monitor.get_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc1',
+			'/Start'), 0)
+
+		self.assertEqual(self._monitor.get_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc2',
+			'/Start'), 0)
+
+		self._services[1]['/ManualStart'] = 1
+		self._update_values()
+		self._check_values(1, {
+			'/State': States.RUNNING,
+			'/MultipleGensets/LastRotated': 11
+		})
+
+		self.assertEqual(self._monitor.get_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc1',
+			'/Start'), 1)
+
+		self.assertEqual(self._monitor.get_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc2',
+			'/Start'), 0)
+
+		self._services[1]['/ManualStart'] = 0
+		self._update_values()
+		self._check_values(1, {
+			'/State': States.STOPPED
+		})
+
+		self.assertEqual(self._monitor.get_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc1',
+			'/Start'), 0)
+
+		self.assertEqual(self._monitor.get_value('com.victronenergy.dcgenset.socketcan_can1_di1_uc2',
+			'/Start'), 0)
+
 if __name__ == '__main__':
 	# patch dbus_generator with mock glib
 	dbus_generator.GLib = mock_glib
