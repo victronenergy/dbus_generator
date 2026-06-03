@@ -25,6 +25,7 @@ monitoring = {
 	'com.victronenergy.dcgenset': {
 		'/Dc/0/Voltage': dummy,
 		'/Dc/0/Current': dummy,
+		'/History/EnergyOut': dummy,
 		'/RemoteStartModeEnabled': dummy,
 		'/Connected': dummy,
 		'/Error/0/Id': dummy,
@@ -230,6 +231,7 @@ class DcGenset(Genset):
 				self._dbusservice.add_path('/MultipleGensets/Voltage', 0, writeable=False)
 				self._dbusservice.add_path('/MultipleGensets/Current', 0, writeable=False)
 				self._dbusservice.add_path('/MultipleGensets/Power', 0, writeable=False)
+				self._dbusservice.add_path('/MultipleGensets/EnergyOut', 0, writeable=False)
 
 			self._remote_setup(gensets)
 
@@ -245,6 +247,10 @@ class GensetService():
 	@property
 	def current(self):
 		return self._dbusmonitor.get_value(self.service_name, '/Dc/0/Current')
+
+	@property
+	def energy(self):
+		return self._dbusmonitor.get_value(self.service_name, '/History/EnergyOut')
 
 	@property
 	def start(self):
@@ -435,11 +441,14 @@ class DcGensets(DcGenset):
 		# Update total power/voltage/current for all gensets
 		voltages = [g.voltage for g in gensets if g.voltage is not None]
 		currents = [g.current for g in gensets if g.current is not None]
+		energies = [g.energy for g in gensets if g.energy is not None]
 		voltage = sum(voltages)/len(voltages) if len(voltages) > 0 else 0
 		current = sum(currents)
+		energy = sum(energies) if len(energies) == len(gensets) else None	# Only show energy if all gensets report it, to avoid confusion
 		self._dbusservice['/MultipleGensets/Voltage'] = voltage
 		self._dbusservice['/MultipleGensets/Current'] = current
 		self._dbusservice['/MultipleGensets/Power'] = voltage * current
+		self._dbusservice['/MultipleGensets/EnergyOut'] = energy
 
 	def dbus_value_changed(self, dbusServiceName, dbusPath, options, changes, deviceInstance):
 		if self._dbusservice is None:
@@ -453,7 +462,7 @@ class DcGensets(DcGenset):
 			self._genset_services[changes['Value']] = dbusServiceName
 			self._check_enable_conditions()
 
-		if any(x in dbusPath for x in ['/Dc/0/Voltage', '/Dc/0/Current', '/Dc/0/Power']):
+		if any(x in dbusPath for x in ['/Dc/0/Voltage', '/Dc/0/Current', '/Dc/0/Power', '/History/EnergyOut']):
 			self._update_genset_aggregated_values()
 
 		super().dbus_value_changed(dbusServiceName, dbusPath, options, changes, deviceInstance)
