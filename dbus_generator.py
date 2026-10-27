@@ -236,8 +236,8 @@ class Generator(object):
 
 	def _device_added(self, dbusservicename, instance):
 		# If settings check built-in relays
-		if dbusservicename == 'com.victronenergy.settings':
-			self._handle_builtin_relay('/Settings/Relay/Function')
+		if dbusservicename == 'com.victronenergy.platform':
+			self._handle_builtin_relay(dbusservicename, '/Generator/StartStop0/Needed')
 
 		self._add_device(dbusservicename)
 
@@ -246,8 +246,8 @@ class Generator(object):
 
 	def _dbus_value_changed(self, dbusServiceName, dbusPath, options, changes, deviceInstance):
 		# Track built-in relays
-		if "/Settings/Relay/Function" in dbusPath:
-			self._handle_builtin_relay(dbusPath)
+		if "/Generator/StartStop0/Needed" in dbusPath:
+			self._handle_builtin_relay(dbusServiceName, dbusPath)
 
 		# Some devices like Fischer Panda gensets doesn't disappear from dbus
 		# when disconnected so check '/Connected' value to add or remove start/stop
@@ -270,7 +270,7 @@ class Generator(object):
 		if dbusservicename in self._ignored_genset_services:
 			self._ignored_genset_services.remove(dbusservicename)
 		if dbusservicename == 'com.victronenergy.settings':
-			self._handle_builtin_relay('/Settings/Relay/Function')
+			self._handle_builtin_relay('com.victronenergy.platform', '/Generator/StartStop0/Needed')
 		for i in self._instances:
 			self._instances[i].device_removed(dbusservicename, instance)
 		self._remove_device(dbusservicename)
@@ -319,20 +319,19 @@ class Generator(object):
 				self._instances[service] = i.create(self._dbusmonitor,
 												service, self._settings)
 
-	def _handle_builtin_relay(self, dbuspath):
-		function = self._dbusmonitor.get_value('com.victronenergy.settings', dbuspath)
-		relaynr = 'generator0'
-		relayservice = 'com.victronenergy.system'
-
-		# Create a instance if relay function is set to 1 (gen. start/stop)
-		# otherwise remove the instance if exists
-		if function == 1:
-			self._instances[relaynr] = relay.create(self._dbusmonitor,
+	def _handle_builtin_relay(self, dbusServiceName, dbuspath):
+		if dbusServiceName == 'com.victronenergy.platform' and dbuspath == '/Generator/StartStop0/Needed':
+			needed = self._dbusmonitor.get_value(dbusServiceName, dbuspath)
+			relaynr = 'generator0'
+			if needed == 1:
+				relayservice = 'com.victronenergy.platform'
+				self._instances[relaynr] = relay.create(self._dbusmonitor,
 													relayservice,
 													self._settings)
-		elif relaynr in self._instances:
-			self._instances[relaynr].remove()
-			del self._instances[relaynr]
+			else:
+				if relaynr in self._instances:
+					self._instances[relaynr].remove()
+					del self._instances[relaynr]
 
 	def _remove_device(self, servicename):
 		if servicename.startswith('com.victronenergy.dcgenset'):

@@ -7,7 +7,7 @@ import dbus
 import monotonic_time
 from gen_utils import States, dummy
 
-remoteprefix = 'com.victronenergy.system'
+remoteprefix = 'com.victronenergy.platform'
 name = "Generator0"
 device_instance = 0
 
@@ -20,6 +20,10 @@ monitoring = {
 	'com.victronenergy.system': {
 		'/Relay/0/State': dummy,
 		'/DeviceInstance': dummy,
+		},
+	'com.victronenergy.platform': {
+		'/Generator/StartStop0/Needed': dummy,
+		'/Generator/StartStop0/State': dummy
 		}
 	}
 
@@ -41,8 +45,9 @@ class RelayGenerator(StartStop):
 	def _remote_setup(self):
 		self.enable()
 		# Make sure that the relay polarity is set to normally open.
-		if self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Polarity') == 1:
-			self._dbusmonitor.set_value('com.victronenergy.settings', '/Settings/Relay/Polarity', 0)
+		# TODO: Make sure on the venus-platform side that the polarity is correct.
+		#if self._dbusmonitor.get_value('com.victronenergy.settings', '/Settings/Relay/Polarity') == 1:
+		#	self._dbusmonitor.set_value('com.victronenergy.settings', '/Settings/Relay/Polarity', 0)
 
 	def _running_by_digital_input(self, path, value):
 		if path == '/DigitalInput/Running':
@@ -80,10 +85,10 @@ class RelayGenerator(StartStop):
 		pass
 
 	def _get_remote_switch_state(self):
-		return self._dbusmonitor.get_value(self._remoteservice, '/Relay/0/State')
+		return self._dbusmonitor.get_value(self._remoteservice, '/Generator/StartStop0/State')
 
 	def _set_remote_switch_state(self, value):
-		self._dbusmonitor.set_value_async(self._remoteservice, '/Relay/0/State', value)
+		self._dbusmonitor.set_value_async(self._remoteservice, '/Generator/StartStop0/State', value)
 
 		# No digital input to monitor the generator, assume that it runs based on the state of the relay
 		if self._digitalInput == 0:
