@@ -56,6 +56,14 @@ def safe_max(args):
 	except ValueError:
 		return None
 
+def local_timestamp(day, seconds):
+	# Resolve the seconds-since-midnight as a wall-clock time on the given
+	# local date. Adding the offset to time.mktime(day.timetuple()) instead
+	# would use the UTC offset of midnight, which is off by an hour on the
+	# day of a daylight saving time transition.
+	dt = datetime.datetime.combine(day, datetime.time()) + datetime.timedelta(seconds=seconds)
+	return time.mktime(dt.timetuple())
+
 class Condition(object):
 	def __init__(self, parent):
 		self.parent = parent
@@ -1000,7 +1008,7 @@ class StartStop(object):
 
 		try:
 			startdate = datetime.date.fromtimestamp(self._settings['testrunstartdate'])
-			_starttime = time.mktime(yesterday.timetuple()) + self._settings['testrunstarttimer']
+			_starttime = local_timestamp(yesterday, self._settings['testrunstarttimer'])
 
 			# today might in fact still be yesterday, if this test run started
 			# before midnight and finishes after. If `now` still falls in
@@ -1012,14 +1020,14 @@ class StartStop(object):
 				today = yesterday
 				starttime = _starttime
 			else:
-				starttime = time.mktime(today.timetuple()) + self._settings['testrunstarttimer']
+				starttime = local_timestamp(today, self._settings['testrunstarttimer'])
 		except ValueError:
 			logging.debug('Invalid dates, skipping testrun')
 			return False
 
 		# If start date is in the future set as NextTestRun and stop evaluating
 		if startdate > today:
-			self._dbusservice['/NextTestRun'] = time.mktime(startdate.timetuple())
+			self._dbusservice['/NextTestRun'] = local_timestamp(startdate, self._settings['testrunstarttimer'])
 			return False
 
 		start = False
@@ -1055,15 +1063,19 @@ class StartStop(object):
 		if not bool(mod) and (now <= stoptime):
 			self._dbusservice['/NextTestRun'] = starttime
 		else:
-			self._dbusservice['/NextTestRun'] = (time.mktime((today + datetime.timedelta(days=interval - mod)).timetuple()) +
-												 self._settings['testrunstarttimer'])
+			self._dbusservice['/NextTestRun'] = local_timestamp(
+				today + datetime.timedelta(days=interval - mod),
+				self._settings['testrunstarttimer'])
 		return start and needed
 
 	def _check_quiet_hours(self):
 		active = False
 		if self._settings['quiethoursenabled'] == 1:
-			# Seconds after today 00:00
-			timeinseconds = time.time() - time.mktime(datetime.date.today().timetuple())
+			# Wall-clock seconds after today 00:00. Do not derive this from
+			# time.mktime(midnight), as that would count the DST shift as
+			# elapsed time on the day of a transition.
+			now = datetime.datetime.now()
+			timeinseconds = (now - datetime.datetime.combine(now.date(), datetime.time())).total_seconds()
 			quiethoursstart = self._settings['quiethoursstarttime']
 			quiethoursend = self._settings['quiethoursendtime']
 
